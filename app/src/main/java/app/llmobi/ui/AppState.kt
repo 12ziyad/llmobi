@@ -21,13 +21,17 @@ import app.llmobi.device.DeviceProfiler
 import app.llmobi.device.Fit
 import app.llmobi.download.ModelDownloadWorker
 import app.llmobi.engine.Engines
+import app.llmobi.engine.Turn
+import app.llmobi.perf.Perf
+import app.llmobi.perf.Run
 import app.llmobi.ui.theme.ThemeChoice
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
-enum class Screen { CHAT, STORE, MY_AIS, SETTINGS, APPEARANCE, STORAGE, MODEL_SETTINGS }
+enum class Screen { CHAT, STORE, MY_AIS, SETTINGS, APPEARANCE, STORAGE, MODEL_SETTINGS, PERFORMANCE }
 
 class AppState(app: Application) : AndroidViewModel(app) {
 
@@ -62,6 +66,10 @@ class AppState(app: Application) : AndroidViewModel(app) {
     var chatId by mutableStateOf<Long?>(null)
         private set
     var generating by mutableStateOf(false)
+        private set
+
+    /** True while the model is being read off disk - seconds on a cold start. */
+    var loadingModel by mutableStateOf(false)
         private set
     var engineNote by mutableStateOf<String?>(null)
         private set
@@ -222,39 +230,93 @@ class AppState(app: Application) : AndroidViewModel(app) {
         }
 
         genJob = viewModelScope.launch {
+            val sentAt = System.currentTimeMillis()
+            Perf.startLive()
+
+            // Loading reads hundreds of megabytes off flash. It happens on the
+            // engine thread, but the user still needs to see that we are busy.
+            loadingModel = !(Engines.currentModelId == m.id && Engines.engine().loaded)
+            val loadStart = System.currentTimeMillis()
             val ok = Engines.ensureLoaded(m.id, inst.path, ctxSize)
+            val loadMs = if (loadingModel) System.currentTimeMillis() - loadStart else 0L
+            loadingModel = false
             if (!ok) {
+                Perf.endLive()
                 finishStream(aiId, "I could not load onto this phone right now. Close some apps and try again.")
                 return@launch
             }
             engineNote = if (Engines.usingRealEngine) null else "Preview engine - llama.cpp not built yet"
 
-            val prompt = buildPrompt(s.system, trimmed)
+            val turns = withContext(Dispatchers.Default) { buildTurns(s.system, trimmed) }
             val sb = StringBuilder()
+            var lastPush = 0L
+            var tokens = 0
+            var firstWordAt = 0L
             try {
-                Engines.engine().generate(prompt, 512, s.creativity).collectLatest { tok ->
+                // collect, never collectLatest: collectLatest cancels the previous
+                // token's handler when the next arrives, which silently drops text.
+                Engines.engine().generate(turns, 400, s.creativity).collect { tok ->
+                    if (firstWordAt == 0L) firstWordAt = System.currentTimeMillis()
+                    tokens++
                     sb.append(tok)
-                    val idx = messages.indexOfFirst { it.id == aiId }
-                    if (idx >= 0) messages[idx] = messages[idx].copy(text = sb.toString())
+                    // Pushing every token recomposes the list ~20x a second for no
+                    // visible gain. Coalescing to ~60 ms reads identically and costs
+                    // a fraction of the frame time.
+                    val now = System.currentTimeMillis()
+                    if (now - lastPush >= 60L) {
+                        lastPush = now
+                        val idx = messages.indexOfFirst { it.id == aiId }
+                        if (idx >= 0) messages[idx] = messages[idx].copy(text = sb.toString())
+                        Perf.tickLive(tokens, firstWordAt - sentAt)
+                    }
                 }
             } catch (_: Throwable) {
                 // Falls through to whatever was produced before the failure.
+            }
+            val endedAt = System.currentTimeMillis()
+            Perf.endLive()
+            if (tokens > 0) {
+                Perf.record(
+                    Run(
+                        modelId = m.id,
+                        modelName = m.name,
+                        loadMs = loadMs,
+                        firstWordMs = (firstWordAt - sentAt).coerceAtLeast(0),
+                        genMs = (endedAt - firstWordAt).coerceAtLeast(1),
+                        tokens = tokens,
+                        promptTurns = turns.size,
+                        at = sentAt,
+                    )
+                )
             }
             finishStream(aiId, sb.toString().ifBlank { "(no reply)" })
         }
     }
 
-    private fun buildPrompt(system: String, user: String): String {
-        val sys = system.ifBlank { "You are a helpful assistant running locally on the user's phone." }
-        val history = messages
-            .dropLast(1)
-            .takeLast(10)
-            .joinToString("\n") { if (it.role == "me") "User: ${it.text}" else "Assistant: ${it.text}" }
-        return buildString {
-            append(sys).append("\n\n")
-            if (history.isNotBlank()) append(history).append("\n")
-            append("User: ").append(user).append("\nAssistant:")
-        }
+    /**
+     * The conversation as discrete turns, for the model's own chat template.
+     *
+     * The last two entries are dropped: they are the message just added and the
+     * empty assistant bubble being streamed into. History is capped at eight turns
+     * because every extra turn is prompt the phone must re-read before it can say
+     * a single word.
+     */
+    private fun buildTurns(system: String, user: String): List<Turn> {
+        val out = ArrayList<Turn>(12)
+        out += Turn(
+            "system",
+            system.ifBlank {
+                "You are a helpful assistant running locally on the user's phone. " +
+                    "Answer directly and keep it short unless asked for detail."
+            },
+        )
+        messages
+            .dropLast(2)
+            .takeLast(8)
+            .filter { it.text.isNotBlank() }
+            .forEach { out += Turn(if (it.role == "me") "user" else "assistant", it.text) }
+        out += Turn("user", user)
+        return out
     }
 
     private fun finishStream(aiId: Long, finalText: String) {
@@ -268,6 +330,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     fun stopGeneration() {
         if (!generating) return
+        loadingModel = false
         Engines.engine().stop()
         genJob?.cancel()
         genJob = null

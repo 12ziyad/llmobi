@@ -98,8 +98,18 @@ fun ChatScreen(s: AppState) {
 
         // ---------------- messages
         val listState = rememberLazyListState()
-        LaunchedEffect(s.messages.size, s.messages.lastOrNull()?.text?.length) {
+        // Animate only when a whole new message appears.
+        LaunchedEffect(s.messages.size) {
             if (s.messages.isNotEmpty()) listState.animateScrollToItem(s.messages.size - 1)
+        }
+        // While tokens stream in, pin to the bottom cheaply. Keying this on the
+        // growing text length started a fresh animation ~20 times a second, and
+        // each one cancelled the last.
+        LaunchedEffect(s.generating) {
+            while (s.generating) {
+                if (s.messages.isNotEmpty()) listState.scrollToItem(s.messages.size - 1)
+                kotlinx.coroutines.delay(120)
+            }
         }
 
         if (s.messages.isEmpty()) {
@@ -212,12 +222,36 @@ private fun Bubble(m: Message, s: AppState) {
                         .heightIn(min = 20.dp)
                 ) {}
                 Box(Modifier.padding(start = 11.dp)) {
-                    Text(
-                        m.text.ifBlank { "█" },
-                        color = skin.fg.copy(alpha = 0.92f),
-                        fontSize = 14.sp,
-                        lineHeight = 21.sp,
-                    )
+                    if (m.text.isBlank() && s.loadingModel) {
+                        Column {
+                            Text(
+                                "Waking " + (s.model?.name ?: "the model") + " up",
+                                color = skin.fg,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Mono("READING THE MODEL OFF STORAGE · A FEW SECONDS", size = 8)
+                        }
+                    } else if (m.text.isBlank()) {
+                        Column {
+                            Text(
+                                "Thinking",
+                                color = skin.fg,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Mono("YOUR PHONE IS DOING THE MATHS ITSELF", size = 8)
+                        }
+                    } else {
+                        Text(
+                            m.text.ifBlank { "█" },
+                            color = skin.fg.copy(alpha = 0.92f),
+                            fontSize = 14.sp,
+                            lineHeight = 21.sp,
+                        )
+                    }
                 }
             }
         }

@@ -1,15 +1,16 @@
 // LLMobi <-> llama.cpp bridge.
 //
 // Deliberately small. The Kotlin side owns all policy (which model, what context
-// size, when to stop); this file only knows how to load a GGUF and hand back one
-// token at a time.
+// size, when to stop); this file only knows how to load a GGUF, apply the model's
+// own chat template, and hand back one token at a time.
 
 #include <jni.h>
 #include <android/log.h>
-#include <string>
-#include <vector>
+#include <algorithm>
 #include <atomic>
 #include <mutex>
+#include <string>
+#include <vector>
 
 #include "llama.h"
 
@@ -33,8 +34,6 @@ struct Session {
     llama_context *ctx   = nullptr;
     llama_sampler *smpl  = nullptr;
 
-    // completion state
-    std::vector<llama_token> pending;   // prompt tokens not yet fed
     int   produced   = 0;
     int   max_tokens = 0;
     bool  running    = false;
@@ -61,13 +60,60 @@ std::string piece(const llama_vocab *vocab, llama_token tok) {
     char buf[256];
     int n = llama_token_to_piece(vocab, tok, buf, sizeof(buf), 0, true);
     if (n < 0) {
-        // Rare: the piece is longer than the stack buffer.
         std::vector<char> big(-n + 1);
         n = llama_token_to_piece(vocab, tok, big.data(), (int32_t) big.size(), 0, true);
         if (n < 0) return {};
         return std::string(big.data(), n);
     }
     return std::string(buf, n);
+}
+
+/**
+ * Formats the conversation using whatever template the GGUF itself carries.
+ *
+ * This matters far more than it looks. Without it the model is not being asked a
+ * question at all - it is being handed a piece of text to continue, so it never
+ * emits its end-of-turn token and rambles until it hits the token cap. Getting
+ * this right is the difference between a two second answer and a thirty second one.
+ */
+std::string build_prompt(Session *s,
+                         const std::vector<std::string> &roles,
+                         const std::vector<std::string> &contents) {
+    const char *tmpl = llama_model_chat_template(s->model, nullptr);
+
+    if (tmpl) {
+        std::vector<llama_chat_message> msgs;
+        msgs.reserve(roles.size());
+        for (size_t i = 0; i < roles.size(); i++) {
+            msgs.push_back({roles[i].c_str(), contents[i].c_str()});
+        }
+
+        size_t needed = 512;
+        for (const auto &c : contents) needed += c.size() * 2 + 64;
+
+        std::vector<char> buf(needed);
+        int32_t n = llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), true,
+                                              buf.data(), (int32_t) buf.size());
+        if (n > (int32_t) buf.size()) {
+            buf.resize(n + 1);
+            n = llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), true,
+                                          buf.data(), (int32_t) buf.size());
+        }
+        if (n > 0) return std::string(buf.data(), n);
+        LOGE("chat template failed (%d), falling back to plain format", n);
+    } else {
+        LOGI("model has no chat template, using plain format");
+    }
+
+    // Fallback for the rare GGUF with no template baked in.
+    std::string out;
+    for (size_t i = 0; i < roles.size(); i++) {
+        if (roles[i] == "system")      out += contents[i] + "\n\n";
+        else if (roles[i] == "user")   out += "User: " + contents[i] + "\n";
+        else                            out += "Assistant: " + contents[i] + "\n";
+    }
+    out += "Assistant:";
+    return out;
 }
 
 } // namespace
@@ -121,7 +167,9 @@ Java_app_llmobi_engine_LlamaBridge_nativeLoadModel(
     s->model = model;
     s->ctx   = ctx;
 
-    LOGI("loaded %s (ctx=%d, threads=%d)", path.c_str(), contextSize, threads);
+    LOGI("loaded %s (ctx=%d, threads=%d, template=%s)",
+         path.c_str(), contextSize, threads,
+         llama_model_chat_template(model, nullptr) ? "yes" : "none");
     return reinterpret_cast<jlong>(s);
 }
 
@@ -133,30 +181,56 @@ Java_app_llmobi_engine_LlamaBridge_nativeFreeModel(JNIEnv *, jobject, jlong hand
     LOGI("model freed");
 }
 
+/**
+ * Starts a completion from a structured conversation.
+ *
+ * roles[i] is one of "system" | "user" | "assistant"; contents[i] is that turn's
+ * text. Passing the turns separately (rather than one pre-joined string) is what
+ * lets the model's own template be applied correctly.
+ */
 JNIEXPORT jboolean JNICALL
-Java_app_llmobi_engine_LlamaBridge_nativeStartCompletion(
-        JNIEnv *env, jobject, jlong handle, jstring jprompt, jint maxTokens, jfloat temperature) {
+Java_app_llmobi_engine_LlamaBridge_nativeStartChat(
+        JNIEnv *env, jobject, jlong handle,
+        jobjectArray jroles, jobjectArray jcontents,
+        jint maxTokens, jfloat temperature) {
+
     Session *s = as_session(handle);
     if (!s || !s->ctx) return JNI_FALSE;
 
-    const std::string prompt = jstr(env, jprompt);
+    const jsize n_msg = env->GetArrayLength(jroles);
+    if (n_msg <= 0 || env->GetArrayLength(jcontents) != n_msg) return JNI_FALSE;
+
+    std::vector<std::string> roles, contents;
+    roles.reserve(n_msg);
+    contents.reserve(n_msg);
+    for (jsize i = 0; i < n_msg; i++) {
+        auto r = (jstring) env->GetObjectArrayElement(jroles, i);
+        auto c = (jstring) env->GetObjectArrayElement(jcontents, i);
+        roles.push_back(jstr(env, r));
+        contents.push_back(jstr(env, c));
+        env->DeleteLocalRef(r);
+        env->DeleteLocalRef(c);
+    }
+
+    const std::string prompt = build_prompt(s, roles, contents);
     const llama_vocab *vocab = llama_model_get_vocab(s->model);
 
     // Each turn starts from a clean slate. Simple, and it keeps peak memory
     // predictable on a phone - which matters more here than prefix reuse.
     llama_memory_clear(llama_get_memory(s->ctx), true);
 
-    int32_t n_max = (int32_t) prompt.size() + 64;
-    std::vector<llama_token> toks(n_max);
+    std::vector<llama_token> toks(prompt.size() + 64);
+    // parse_special must stay true: the template's markers have to become real
+    // special tokens, not literal angle brackets the model has never seen.
     int32_t n = llama_tokenize(vocab, prompt.c_str(), (int32_t) prompt.size(),
-                               toks.data(), n_max, true, true);
+                               toks.data(), (int32_t) toks.size(), true, true);
     if (n < 0) {
         toks.resize(-n);
         n = llama_tokenize(vocab, prompt.c_str(), (int32_t) prompt.size(),
                            toks.data(), (int32_t) toks.size(), true, true);
     }
     if (n <= 0) {
-        LOGE("tokenize failed");
+        LOGE("tokenize failed (%d)", n);
         return JNI_FALSE;
     }
     toks.resize(n);
@@ -168,7 +242,6 @@ Java_app_llmobi_engine_LlamaBridge_nativeStartCompletion(
         toks.erase(toks.begin(), toks.end() - keep);
     }
 
-    // Feed the prompt in batches the context can actually take.
     const int n_batch = 256;
     for (size_t i = 0; i < toks.size(); i += n_batch) {
         const int chunk = (int) std::min((size_t) n_batch, toks.size() - i);
@@ -195,6 +268,7 @@ Java_app_llmobi_engine_LlamaBridge_nativeStartCompletion(
     s->max_tokens = maxTokens;
     s->running    = true;
     s->cancel.store(false);
+    LOGI("chat started: %d prompt tokens, cap %d", (int) toks.size(), maxTokens);
     return JNI_TRUE;
 }
 

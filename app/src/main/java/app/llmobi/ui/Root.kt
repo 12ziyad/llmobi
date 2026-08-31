@@ -29,6 +29,7 @@ import app.llmobi.ui.screens.ChatScreen
 import app.llmobi.ui.screens.Drawer
 import app.llmobi.ui.screens.ModelSettingsScreen
 import app.llmobi.ui.screens.MyAisScreen
+import app.llmobi.ui.screens.PerfScreen
 import app.llmobi.ui.screens.SettingsScreen
 import app.llmobi.ui.screens.StorageScreen
 import app.llmobi.ui.screens.StoreScreen
@@ -51,6 +52,7 @@ fun Root(s: AppState) {
                 Screen.APPEARANCE -> AppearanceScreen(s)
                 Screen.STORAGE -> StorageScreen(s)
                 Screen.MODEL_SETTINGS -> ModelSettingsScreen(s)
+                Screen.PERFORMANCE -> PerfScreen(s)
             }
 
             // ---- sliding drawer

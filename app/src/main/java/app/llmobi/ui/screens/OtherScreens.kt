@@ -269,6 +269,16 @@ fun SettingsScreen(s: AppState) {
             item {
                 SettingRow("Storage", sub = "$usedGb GB used", value = "›", onClick = { s.go(Screen.STORAGE) })
             }
+            item {
+                SettingRow(
+                    "Speed",
+                    sub = if (app.llmobi.perf.Perf.avgTokensPerSec > 0)
+                        "%.1f words per second".format(app.llmobi.perf.Perf.avgTokensPerSec)
+                    else "how fast this phone is",
+                    value = "›",
+                    onClick = { s.go(Screen.PERFORMANCE) },
+                )
+            }
             item { SectionLabel("Privacy") }
             item {
                 Card {

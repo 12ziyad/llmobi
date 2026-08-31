@@ -51,10 +51,16 @@ object Catalog {
             tagline = "Tiny and instant. Good for quick questions.",
             tier = Tier.TINY, category = "general", iconLetter = "Q",
             colorStart = 0xFF7BD4F5, colorEnd = 0xFF3C8FD0,
-            sizeLabel = "0.5 GB", speedHint = "very fast",
-            fileBytes = 522186592L, minRamMb = 1200, ctxDefault = 2048,
-            arch = "qwen2", quant = "Q5_K_M",
-            url = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q5_k_m.gguf",
+            sizeLabel = "0.4 GB", speedHint = "very fast",
+            fileBytes = 428730208L, minRamMb = 1100, ctxDefault = 2048,
+            // Q4_0 rather than the usual Q4_K_M or Q5_K_M on purpose. Every ARM
+            // chip we care about reports asimddp, and llama.cpp repacks Q4_0 to
+            // use those dot-product instructions. Measured on a Dimensity 6100+:
+            // Q4_0 17.2 tok/s, Q4_K_M 15.0, Q5_K_M 14.4 - and it is the smallest
+            // download of the three. On the weak phones this tier exists for,
+            // that trade is worth the small quality cost.
+            arch = "qwen2", quant = "Q4_0",
+            url = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_0.gguf",
             sha256 = "", license = "apache-2.0",
         ),
         ModelEntry(
