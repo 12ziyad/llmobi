@@ -1,0 +1,25 @@
+name = "llmobi-api"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Weekly sweep of Hugging Face for new files and dead links.
+[triggers]
+crons = ["0 4 * * 1"]
+
+# Fill database_id in after: npm run db:create
+[[d1_databases]]
+binding = "DB"
+database_name = "llmobi"
+database_id = "local-dev-placeholder"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "local-dev-placeholder"
+
+# Optional model mirror. Zero egress fees is the whole reason this exists.
+# [[r2_buckets]]
+# binding = "MODELS"
+# bucket_name = "llmobi-models"
+
+[vars]
+CATALOG_VERSION = "1"

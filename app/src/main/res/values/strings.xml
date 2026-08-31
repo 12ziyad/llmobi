@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LLMobi</string>
+    <string name="download_channel_name">Model downloads</string>
+    <string name="download_channel_desc">Progress while an AI model downloads</string>
+</resources>

@@ -1,0 +1,16 @@
+{
+  "name": "llmobi-api",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create llmobi",
+    "db:init": "wrangler d1 execute llmobi --remote --file=./schema.sql",
+    "db:seed": "wrangler d1 execute llmobi --remote --file=./seed.sql",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^3.99.0"
+  }
+}

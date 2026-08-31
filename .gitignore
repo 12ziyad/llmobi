@@ -1,0 +1,31 @@
+# Android
+*.iml
+.gradle/
+local.properties
+.idea/
+build/
+app/build/
+app/.cxx/
+captures/
+.externalNativeBuild/
+*.apk
+*.aab
+
+# Native
+native/llama.cpp/
+native/smoke/build-arm64/
+
+# Big test files - never commit model weights
+testmodel/
+*.gguf
+shots/
+
+# Web / API
+node_modules/
+web/dist/
+api/.wrangler/
+.dev.vars
+
+# OS
+Thumbs.db
+.DS_Store
