@@ -11,6 +11,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <chrono>
 
 #include "llama.h"
 
@@ -173,6 +174,27 @@ Java_app_llmobi_engine_LlamaBridge_nativeLoadModel(
     return reinterpret_cast<jlong>(s);
 }
 
+/**
+ * Forces the weights and compute buffers into memory with one throwaway decode.
+ *
+ * llama.cpp mmaps the file, so loading returns almost instantly and the real
+ * cost lands on the first decode - which is whichever message the user happens
+ * to send first. Paying it here instead means the wait happens under a screen
+ * that says "waking up", not under one that looks frozen.
+ */
+JNIEXPORT void JNICALL
+Java_app_llmobi_engine_LlamaBridge_nativeWarmUp(JNIEnv *, jobject, jlong handle) {
+    Session *s = as_session(handle);
+    if (!s || !s->ctx) return;
+    const llama_vocab *vocab = llama_model_get_vocab(s->model);
+    llama_token bos = llama_vocab_bos(vocab);
+    if (bos < 0) bos = 0;
+    llama_batch b = llama_batch_get_one(&bos, 1);
+    llama_decode(s->ctx, b);
+    llama_memory_clear(llama_get_memory(s->ctx), true);
+    LOGI("warm-up decode done");
+}
+
 JNIEXPORT void JNICALL
 Java_app_llmobi_engine_LlamaBridge_nativeFreeModel(JNIEnv *, jobject, jlong handle) {
     Session *s = as_session(handle);
@@ -212,7 +234,17 @@ Java_app_llmobi_engine_LlamaBridge_nativeStartChat(
         env->DeleteLocalRef(c);
     }
 
+    using clk = std::chrono::steady_clock;
+    auto mark = clk::now();
+    auto lap = [&mark]() {
+        auto now = clk::now();
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - mark).count();
+        mark = now;
+        return (long) ms;
+    };
+
     const std::string prompt = build_prompt(s, roles, contents);
+    const long t_template = lap();
     const llama_vocab *vocab = llama_model_get_vocab(s->model);
 
     // Each turn starts from a clean slate. Simple, and it keeps peak memory
@@ -234,6 +266,7 @@ Java_app_llmobi_engine_LlamaBridge_nativeStartChat(
         return JNI_FALSE;
     }
     toks.resize(n);
+    const long t_tokenize = lap();
 
     // Never let the prompt fill the whole window - leave room to answer.
     const int n_ctx = (int) llama_n_ctx(s->ctx);
@@ -252,6 +285,8 @@ Java_app_llmobi_engine_LlamaBridge_nativeStartChat(
         }
     }
 
+    const long t_decode = lap();
+
     if (s->smpl) llama_sampler_free(s->smpl);
     auto sp = llama_sampler_chain_default_params();
     s->smpl = llama_sampler_chain_init(sp);
@@ -268,7 +303,9 @@ Java_app_llmobi_engine_LlamaBridge_nativeStartChat(
     s->max_tokens = maxTokens;
     s->running    = true;
     s->cancel.store(false);
-    LOGI("chat started: %d prompt tokens, cap %d", (int) toks.size(), maxTokens);
+    LOGI("chat started: %d prompt tokens, cap %d | template=%ldms tokenize=%ldms decode=%ldms (%.1f ms/tok)",
+         (int) toks.size(), maxTokens, t_template, t_tokenize, t_decode,
+         toks.empty() ? 0.0 : (double) t_decode / toks.size());
     return JNI_TRUE;
 }
 

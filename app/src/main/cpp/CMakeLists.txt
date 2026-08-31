@@ -1,8 +1,25 @@
 cmake_minimum_required(VERSION 3.22.1)
-project(llmobi CXX)
+project(llmobi C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Never build ggml unoptimised, not even in a debug APK.
+#
+# AGP sets CMAKE_BUILD_TYPE=Debug for debug builds, and CMake appends
+# CMAKE_CXX_FLAGS_DEBUG (-O0 -g) after any flags we pass - so -O0 wins and the
+# matrix kernels run roughly fifty times slower. Measured on a Dimensity 6100+:
+# 870 ms per prompt token at -O0 against about 20 ms at -O3. Debug symbols are
+# still kept, so native crashes remain readable.
+set(CMAKE_C_FLAGS_DEBUG   "-O3 -g -DNDEBUG" CACHE STRING "" FORCE)
+set(CMAKE_CXX_FLAGS_DEBUG "-O3 -g -DNDEBUG" CACHE STRING "" FORCE)
+
+# Belt and braces. The cache variables above are the tidy fix, but they only
+# survive if C is enabled in project() first - enabling a language re-runs the
+# toolchain's flag initialisation and silently resets them. This directory-level
+# option is applied to every target defined below, ggml included, and nothing
+# downstream can undo it.
+add_compile_options($<$<CONFIG:Debug>:-O3>)
 
 # Build only what we need from llama.cpp. Skipping tools/tests/examples cuts the
 # build from minutes to seconds and keeps the APK small.

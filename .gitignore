@@ -29,3 +29,7 @@ api/.wrangler/
 # OS
 Thumbs.db
 .DS_Store
+
+# Signing - NEVER commit
+llmobi-release.jks
+keystore.properties

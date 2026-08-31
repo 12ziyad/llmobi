@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="database" path="llmobi.db" />
+        <include domain="sharedpref" path="llmobi.xml" />
+        <exclude domain="file" path="models" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="database" path="llmobi.db" />
+        <include domain="sharedpref" path="llmobi.xml" />
+        <exclude domain="file" path="models" />
+    </device-transfer>
+</data-extraction-rules>

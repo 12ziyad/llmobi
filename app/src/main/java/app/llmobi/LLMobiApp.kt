@@ -20,7 +20,7 @@ class LLMobiApp : Application() {
                 .onSuccess { Log.i(TAG, "native init ok: $it") }
                 .onFailure { Log.e(TAG, "native init failed", it) }
             runCatching { LlamaBridge.nativeSystemInfo() }
-                .onSuccess { Log.i(TAG, "system: ${it.trim().take(180)}") }
+                .onSuccess { Log.i(TAG, "system: ${it.trim()}") }
                 .onFailure { Log.e(TAG, "system info failed", it) }
         }
     }

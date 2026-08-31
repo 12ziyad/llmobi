@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Everything this app fetches is HTTPS: the catalog from our Worker and model
+  files from Hugging Face or our own CDN. Refusing cleartext outright means a
+  hostile network cannot quietly downgrade a multi-gigabyte download.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

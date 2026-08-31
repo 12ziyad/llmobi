@@ -46,11 +46,20 @@ interface Engine {
  */
 internal val EngineDispatcher: CoroutineDispatcher =
     Executors.newSingleThreadExecutor { r ->
-        Thread(r, "llmobi-engine").apply {
-            // Below the UI thread on purpose: drawing must always win.
-            priority = Thread.NORM_PRIORITY - 1
-            isDaemon = true
-        }
+        Thread({
+            // Priority has to be set from inside the thread, and it has to be
+            // exactly this.
+            //
+            // Java thread priorities map onto Linux nice values, and the mapping is
+            // brutal: NORM_PRIORITY - 1 lands on nice 10. ggml spawns its worker
+            // threads from whichever thread calls decode, so they inherit that nice
+            // value too - which measured as 734 ms per prompt token against 20 ms
+            // for the same work in a standalone binary. THREAD_PRIORITY_DEFAULT is
+            // nice 0; the UI thread sits at nice -10 in the top-app group and still
+            // comfortably wins, so drawing stays smooth.
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DEFAULT)
+            r.run()
+        }, "llmobi-engine").apply { isDaemon = true }
     }.asCoroutineDispatcher()
 
 // ------------------------------------------------------------------ native
@@ -78,6 +87,7 @@ object LlamaBridge {
     external fun nativeInit(): Boolean
     external fun nativeLoadModel(path: String, contextSize: Int, threads: Int): Long
     external fun nativeFreeModel(handle: Long)
+    external fun nativeWarmUp(handle: Long)
     external fun nativeStartChat(
         handle: Long,
         roles: Array<String>,
@@ -107,15 +117,52 @@ class LlamaEngine : Engine {
             // Leave a core or two for the UI and the OS; more threads than the
             // big cluster has just makes it thrash.
             val threads = (cores - 2).coerceIn(2, 6)
+            // Pull the file through the page cache first. llama.cpp mmaps it, so
+            // without this the weights arrive as millions of random page faults
+            // during the first decode - measured at 28 s on a Galaxy F15. One big
+            // sequential read is an order of magnitude faster for the same bytes.
+            warmPageCache(path)
+
             handle = try {
                 LlamaBridge.nativeLoadModel(path, contextSize, threads)
             } catch (t: Throwable) {
                 Log.e("LlamaEngine", "load failed", t)
                 0L
             }
+            if (handle != 0L) {
+                runCatching { LlamaBridge.nativeWarmUp(handle) }
+                    .onFailure { Log.w("LlamaEngine", "warm-up skipped: ${it.message}") }
+            }
             Log.i("LlamaEngine", "load ${if (handle != 0L) "ok" else "FAILED"} (ctx=$contextSize threads=$threads)")
             handle != 0L
         }
+
+    /**
+     * Reads the whole model file sequentially and throws the bytes away. The
+     * point is the side effect: the kernel keeps them in the page cache, so the
+     * mmap that follows is served from memory rather than flash.
+     */
+    private fun warmPageCache(path: String) {
+        val t0 = System.currentTimeMillis()
+        val bytes = runCatching {
+            java.io.File(path).inputStream().use { input ->
+                val buf = ByteArray(4 shl 20)
+                var total = 0L
+                while (true) {
+                    val n = input.read(buf)
+                    if (n <= 0) break
+                    total += n
+                }
+                total
+            }
+        }.getOrDefault(0L)
+        val ms = System.currentTimeMillis() - t0
+        Log.i(
+            "LlamaEngine",
+            "page cache warmed: ${bytes / 1_048_576} MB in ${ms} ms" +
+                if (ms > 0) " (${bytes / 1024 / ms} MB/s)" else "",
+        )
+    }
 
     /** Must only be called from [EngineDispatcher]. */
     private fun unloadOnEngineThread() {

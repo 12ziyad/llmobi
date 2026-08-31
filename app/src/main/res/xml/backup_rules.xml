@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Chats and settings are worth restoring. Model weights are not: they are
+  gigabytes, they are re-downloadable in one tap, and backing them up would
+  silently eat a person's cloud quota.
+-->
+<full-backup-content>
+    <include domain="database" path="llmobi.db" />
+    <include domain="sharedpref" path="llmobi.xml" />
+    <exclude domain="file" path="models" />
+</full-backup-content>
