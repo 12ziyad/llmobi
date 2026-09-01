@@ -48,6 +48,13 @@ add_subdirectory(
 
 add_library(llmobi SHARED llama-jni.cpp)
 
+# Say it explicitly as well as relying on the NDK default, so a future toolchain
+# bump cannot silently reintroduce a library that will not load on a 16 KB device.
+target_link_options(llmobi PRIVATE
+    "-Wl,-z,max-page-size=16384"
+    "-Wl,-z,common-page-size=16384"
+)
+
 target_link_libraries(llmobi
     PRIVATE
         llama

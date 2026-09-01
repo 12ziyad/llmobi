@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.Constraints
@@ -46,6 +47,7 @@ class ModelDownloadWorker(ctx: Context, params: androidx.work.WorkerParameters) 
         const val KEY_TOTAL_BYTES = "total_bytes"
         const val KEY_ERROR = "error"
         const val CHANNEL = "llmobi_downloads"
+        private const val TAG = "ModelDownload"
 
         fun tagFor(modelId: String) = "download_$modelId"
 
@@ -98,7 +100,12 @@ class ModelDownloadWorker(ctx: Context, params: androidx.work.WorkerParameters) 
             )
         }
 
-        setForeground(notification(model.name, 0))
+        // Never fatal. setForeground needs POST_NOTIFICATIONS, which is a runtime
+        // grant on Android 13+; without it the foreground service cannot show its
+        // notification and the system kills the job a second or two in. A missing
+        // progress bar is a small loss. A download that dies silently is not.
+        runCatching { setForeground(notification(model.name, 0)) }
+            .onFailure { Log.w(TAG, "no foreground notification: ${it.message}") }
 
         try {
             var have = if (part.exists()) part.length() else 0L
@@ -108,11 +115,15 @@ class ModelDownloadWorker(ctx: Context, params: androidx.work.WorkerParameters) 
                 .apply { if (have > 0) header("Range", "bytes=$have-") }
                 .build()
 
+            Log.i(TAG, "GET ${model.url} (resume from $have)")
+
             client.newCall(req).execute().use { resp ->
+                Log.i(TAG, "HTTP ${resp.code} ${resp.message} len=${resp.body?.contentLength()}")
                 if (resp.code == 416) {
                     // Server says we already have the whole thing.
                     have = part.length()
                 } else if (!resp.isSuccessful) {
+                    Log.e(TAG, "download failed: HTTP ${resp.code}")
                     return@withContext Result.retry()
                 }
 
@@ -122,7 +133,11 @@ class ModelDownloadWorker(ctx: Context, params: androidx.work.WorkerParameters) 
                     have = 0
                 }
 
-                val body = resp.body ?: return@withContext Result.retry()
+                val body = resp.body
+                if (body == null) {
+                    Log.e(TAG, "empty body")
+                    return@withContext Result.retry()
+                }
                 val total = if (have > 0) have + body.contentLength() else body.contentLength()
                 val totalBytes = if (total > 0) total else model.fileBytes
 
@@ -149,7 +164,7 @@ class ModelDownloadWorker(ctx: Context, params: androidx.work.WorkerParameters) 
                                         .putLong(KEY_TOTAL_BYTES, totalBytes)
                                         .build()
                                 )
-                                setForeground(notification(model.name, pct))
+                                runCatching { setForeground(notification(model.name, pct)) }
                             }
                         }
                     }
@@ -176,6 +191,9 @@ class ModelDownloadWorker(ctx: Context, params: androidx.work.WorkerParameters) 
             Store(applicationContext).markInstalled(modelId, target.absolutePath, target.length())
             Result.success(workDataOf(KEY_PROGRESS to 100))
         } catch (t: Throwable) {
+            // Log before retrying. Swallowing this made a real download failure
+            // indistinguishable from a slow network for forty minutes of backoff.
+            Log.e(TAG, "download threw: ${t::class.java.simpleName}: ${t.message}", t)
             // The .part file stays on disk on purpose: next attempt resumes from it.
             Result.retry()
         }

@@ -9,6 +9,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import app.llmobi.data.Catalog
 import app.llmobi.data.CatalogSync
 import app.llmobi.data.Chat
@@ -93,6 +95,9 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     init {
         refresh()
+        // A download may already be running from a previous launch - reattach to
+        // every model so its completion still lands in the UI.
+        catalog.forEach { observeDownload(it.id) }
         // Fire and forget: the store is already usable from the cached list, so
         // a slow or absent network only ever means slightly stale entries.
         viewModelScope.launch {
@@ -439,7 +444,39 @@ class AppState(app: Application) : AndroidViewModel(app) {
         val m = pendingInstall ?: return
         pendingInstall = null
         ModelDownloadWorker.start(ctx, m.id, wifiOnly)
+        observeDownload(m.id)
         toast = "Installing ${m.name} - keep going in the background"
+    }
+
+    /**
+     * Bridges the worker's result back into compose state.
+     *
+     * The worker records the install in SQLite, but nothing about a database row
+     * changing redraws a screen - the first real download completed perfectly and
+     * the UI carried on saying "not installed" over 428 MB of model. Watching the
+     * WorkInfo is what turns the file arriving into the button changing.
+     */
+    private fun observeDownload(modelId: String) {
+        viewModelScope.launch {
+            WorkManager.getInstance(ctx)
+                .getWorkInfosForUniqueWorkFlow(ModelDownloadWorker.tagFor(modelId))
+                .collect { infos ->
+                    val info = infos.firstOrNull() ?: return@collect
+                    when (info.state) {
+                        WorkInfo.State.SUCCEEDED -> {
+                            refresh()
+                            val name = catalog.firstOrNull { it.id == modelId }?.name ?: modelId
+                            toast = "$name is ready"
+                        }
+                        WorkInfo.State.FAILED -> {
+                            refresh()
+                            toast = info.outputData.getString(ModelDownloadWorker.KEY_ERROR)
+                                ?: "The download stopped. Tap install to try again."
+                        }
+                        else -> Unit
+                    }
+                }
+        }
     }
 
     fun install(m: ModelEntry) {

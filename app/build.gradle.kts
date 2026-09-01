@@ -19,6 +19,12 @@ android {
     namespace = "app.llmobi"
     compileSdk = 35
 
+    // Pinned deliberately. Android 15 introduced 16 KB memory pages, and a shared
+    // library whose LOAD segments are 4 KB-aligned will not load on such a device -
+    // Play also rejects it for anything targeting 15+. NDK 28 aligns to 16 KB by
+    // default; 27, which AGP picked on its own, does not.
+    ndkVersion = "28.2.13676358"
+
     defaultConfig {
         applicationId = "app.llmobi"
         minSdk = 26

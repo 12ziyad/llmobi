@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.llmobi.data.ModelEntry
 import app.llmobi.device.Fit
+import app.llmobi.shortcut.Shortcuts
 import app.llmobi.ui.AppState
 import app.llmobi.ui.Screen
 import app.llmobi.ui.components.BigButton
@@ -353,6 +354,16 @@ private fun MyAiList(s: AppState, modifier: Modifier) {
                     )
                 }
                 if (active) Mono("IN USE", color = skin.green, size = 8, weight = FontWeight.Bold)
+                // The pin button used to live on a settings screen nothing links
+                // to any more, which made the app's headline feature unreachable.
+                // It belongs here, one tap from the model it pins.
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                Box(
+                    Modifier.clickable {
+                        s.toast = if (Shortcuts.requestPin(ctx, m)) "Check your home screen"
+                        else "Your launcher does not allow this"
+                    }.padding(8.dp)
+                ) { Mono("PIN", color = skin.fg, size = 8, weight = FontWeight.Bold) }
                 Box(
                     Modifier.clickable { confirm = m.id }.padding(8.dp)
                 ) { Mono("DELETE", color = skin.red, size = 8, weight = FontWeight.Bold) }

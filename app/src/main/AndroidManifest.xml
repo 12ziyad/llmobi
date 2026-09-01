@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -52,6 +53,18 @@
                 <data android:scheme="llmobi" android:host="chat" />
             </intent-filter>
         </activity>
+
+        <!--
+          WorkManager declares this service with no foregroundServiceType, and on
+          Android 14+ the type passed to startForeground must be a subset of what
+          the manifest declares - otherwise the service throws on the MAIN thread
+          and takes the whole process with it, which no try/catch in a worker can
+          reach. Merging the type in here is the documented fix.
+        -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
     </application>
 </manifest>
