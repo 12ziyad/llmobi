@@ -55,7 +55,9 @@ function HowItWorks() {
 }
 
 const API = 'https://llmobi-api.gpmai.workers.dev/v1/catalog'
-const APK = '/llmobi.apk'
+// Counted route rather than the file itself - Pages serves static files
+// directly and never tells us a download happened.
+const APK = 'https://llmobi-api.gpmai.workers.dev/dl'
 const APK_SIZE = '7.2 MB'
 const REPO = 'https://github.com/12ziyad/llmobi'
 
@@ -314,7 +316,7 @@ export default function App() {
           </p>
           <Demo />
           <div className="cta">
-            <a className="dl" href={APK} download>Download for Android</a>
+            <a className="dl" href={APK}>Download for Android</a>
             <div className="fine">
               <span>{APK_SIZE}</span><span>·</span><span>ANDROID 8+</span><span>·</span><span>NO ACCOUNT</span>
             </div>

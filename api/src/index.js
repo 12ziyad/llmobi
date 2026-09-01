@@ -9,6 +9,8 @@
  * a few dollars a month instead of tens of thousands.
  */
 
+import { download, admin, stats } from './admin.js'
+
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'access-control-allow-origin': '*',
@@ -32,9 +34,17 @@ export default {
         },
       })
     }
-    if (request.method !== 'GET') {
+    // HEAD is allowed as well as GET: download managers and link previewers
+    // probe with HEAD first, and answering 405 makes them give up.
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
       return json({ error: 'method not allowed' }, 405)
     }
+
+    // Counting happens here rather than on the static file, because Pages
+    // serves that directly and never tells us it happened.
+    if (path === '/dl' || path === '/download') return await download(request, env, ctx)
+    if (path === '/admin') return await admin(request, env)
+    if (path === '/admin/stats') return await stats(request, env)
 
     try {
       if (path === '/' || path === '/v1') return json({ ok: true, service: 'llmobi-api', version: 1 })

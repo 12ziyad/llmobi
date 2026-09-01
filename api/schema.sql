@@ -53,3 +53,20 @@ CREATE TABLE overrides (
   category TEXT,
   hidden   INTEGER NOT NULL DEFAULT 0
 );
+
+-- One row per download of the APK.
+--
+-- Deliberately anonymous: no IP, no cookie, no identifier of any kind. Country
+-- and Android version arrive free in Cloudflare's request headers, and neither
+-- one identifies a person. There is nothing here to leak.
+DROP TABLE IF EXISTS downloads;
+CREATE TABLE downloads (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  at       INTEGER NOT NULL,   -- epoch millis
+  day      TEXT    NOT NULL,   -- YYYY-MM-DD, so grouping never parses a date
+  country  TEXT,               -- CF-IPCountry, two letters
+  android  TEXT,               -- major version parsed from the user agent
+  platform TEXT                -- android | other
+);
+CREATE INDEX idx_dl_day     ON downloads(day);
+CREATE INDEX idx_dl_country ON downloads(country);
