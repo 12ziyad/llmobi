@@ -13,6 +13,24 @@ LLMobi.apk
 
 One APK, many icons. To the person holding the phone it looks like several separate AI apps.
 
+**Live:** [llmobi.pages.dev](https://llmobi.pages.dev) &middot; API at `llmobi-api.gpmai.workers.dev`
+
+---
+
+## Licence
+
+LLMobi's own code is [Apache 2.0](LICENSE).
+
+The inference engine is [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT),
+compiled into the shipped APK. See [NOTICE](NOTICE) for the full third-party list.
+
+**Model weights are not covered by any of that.** This project never contains,
+hosts or redistributes them - the catalog holds metadata and a link, and the app
+downloads each file straight from Hugging Face to the device. Every model carries
+its own licence, agreed between the user and the publisher. If you fork this and
+mirror weights instead of linking, that is redistribution and the obligations
+become yours; NOTICE lists which licences apply to what.
+
 ---
 
 ## Repository layout

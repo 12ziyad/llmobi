@@ -304,6 +304,24 @@ h1 span { display: block; color: var(--red); }
 }
 .how-steps p { margin-top: 5px; font-size: 13px; line-height: 1.6; color: var(--grey); }
 
+.top-r { display: flex; align-items: center; gap: 10px; }
+.src {
+  display: flex; align-items: center; gap: 7px;
+  font-family: var(--f-mono); font-size: 9.5px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--grey);
+  border: 1px solid var(--line); padding: 5px 10px; transition: 0.16s;
+}
+.src:hover { color: var(--bone); border-color: var(--grey-2); }
+.src svg { display: block; flex: none; }
+
+.licence {
+  margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line);
+  font-size: 13px; line-height: 1.7; color: var(--grey-2); max-width: 62ch;
+}
+.licence b { color: var(--bone); font-weight: 600; }
+.licence a { color: var(--red); border-bottom: 1px solid currentColor; }
+.licence a:hover { opacity: 0.75; }
+
 .brand { display: flex; align-items: center; gap: 9px; }
 .brand img { display: block; }
 
