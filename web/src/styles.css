@@ -405,8 +405,12 @@ h1 span { display: block; color: var(--red); }
     min-height: calc(100vh - 78px);
   }
   .hero {
-    padding: 54px 44px; display: flex; flex-direction: column;
-    justify-content: center; position: relative;
+    /* Top-aligned and sticky, never centred. The grid row is as tall as the
+       model list (thousands of pixels), so centring the hero inside it pushed
+       the headline halfway down the page with a void above. Pinned to the top
+       instead, it stays in view while the list scrolls beside it. */
+    padding: 56px 44px 64px; display: flex; flex-direction: column;
+    justify-content: flex-start; position: sticky; top: 0; align-self: start;
   }
   .hero::after {
     content: ""; position: absolute; left: 0; right: 0; bottom: 0;
