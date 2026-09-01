@@ -46,7 +46,7 @@ import app.llmobi.ui.components.Bar
 import app.llmobi.ui.components.BigButton
 import app.llmobi.ui.components.Card
 import app.llmobi.ui.components.Chip
-import app.llmobi.ui.components.FitChip
+import app.llmobi.ui.components.NeedChip
 import app.llmobi.ui.components.ModelIcon
 import app.llmobi.ui.components.Mono
 import app.llmobi.ui.components.SectionLabel
@@ -129,36 +129,22 @@ private fun ModelRow(m: ModelEntry, fit: Fit, s: AppState) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Mono(m.sizeLabel, size = 10, spacing = 0.4)
                     Spacer(Modifier.width(7.dp))
-                    FitChip(fit)
+                    NeedChip(m.minRamMb, fit == Fit.EXCELLENT || fit == Fit.RECOMMENDED)
                 }
             }
             Spacer(Modifier.width(8.dp))
             Box(
                 Modifier
                     .clip(RoundedCornerShape(999.dp))
-                    .background(
-                        when {
-                            installed -> skin.green.copy(alpha = 0.16f)
-                            fit == Fit.WONT_RUN || fit == Fit.NO_SPACE -> Color.Transparent
-                            else -> skin.red
-                        }
-                    )
+                    .background(if (installed) skin.green.copy(alpha = 0.16f) else skin.red)
                     .clickable {
-                        if (installed) { s.selectModel(m.id); s.go(Screen.CHAT) } else s.install(m)
+                        if (installed) { s.selectModel(m.id); s.go(Screen.CHAT) } else s.askInstall(m)
                     }
                     .padding(horizontal = 13.dp, vertical = 7.dp)
             ) {
                 Mono(
-                    when {
-                        installed -> "OPEN"
-                        fit == Fit.WONT_RUN || fit == Fit.NO_SPACE -> "VIEW"
-                        else -> "INSTALL"
-                    },
-                    color = when {
-                        installed -> skin.green
-                        fit == Fit.WONT_RUN || fit == Fit.NO_SPACE -> skin.grey2
-                        else -> skin.onRed
-                    },
+                    if (installed) "OPEN" else "INSTALL",
+                    color = if (installed) skin.green else skin.onRed,
                     size = 10, weight = FontWeight.Bold, spacing = 0.8,
                 )
             }
@@ -427,59 +413,6 @@ fun StorageScreen(s: AppState) {
     }
 }
 
-@Composable
-private fun DeleteSheet(
-    model: ModelEntry,
-    chats: Int,
-    onCancel: () -> Unit,
-    onDelete: (keepChats: Boolean) -> Unit,
-) {
-    val skin = LocalSkin.current
-    var keep by remember { mutableStateOf(true) }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color(0xCC060708))
-            .clickable(onClick = onCancel),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            Modifier
-                .padding(24.dp)
-                .background(skin.bg2)
-                .border(BorderStroke(1.dp, skin.line))
-                .padding(22.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            ModelIcon(model, 52)
-            Spacer(Modifier.height(14.dp))
-            Text(
-                "Delete ${model.name}?".uppercase(),
-                color = skin.fg, fontSize = 18.sp,
-                fontWeight = FontWeight.ExtraBold, letterSpacing = 0.6.sp,
-            )
-            Spacer(Modifier.height(10.dp))
-            Mono("FREES ${model.sizeLabel} OF STORAGE", size = 10)
-            Spacer(Modifier.height(3.dp))
-            Mono("REMOVES THE HOME SCREEN ICON", size = 10)
-            Spacer(Modifier.height(16.dp))
-            Card {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Keep my $chats chats", color = skin.fg, fontSize = 13.sp)
-                        Spacer(Modifier.height(2.dp))
-                        Mono("SO REINSTALLING RESTORES THEM", size = 8)
-                    }
-                    Toggle(keep) { keep = it }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-            BigButton("Delete") { onDelete(keep) }
-            Spacer(Modifier.height(7.dp))
-            BigButton("Cancel", ghost = true) { onCancel() }
-        }
-    }
-}
 
 // ---------------------------------------------------------------- model settings
 

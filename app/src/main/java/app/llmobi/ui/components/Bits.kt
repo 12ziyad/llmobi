@@ -97,6 +97,31 @@ fun ModelIcon(model: ModelEntry, size: Int = 40) {
     }
 }
 
+/**
+ * States what a model needs, not whether we think it will work.
+ *
+ * The verdict version of this ("WON'T RUN") was wrong to show in a list: free
+ * memory moves around, closing apps changes the answer, and telling somebody
+ * their phone is inadequate over and over is a miserable way to browse. The
+ * requirements sheet on install is where the honest warning belongs.
+ */
+@Composable
+fun NeedChip(minRamMb: Int, comfortable: Boolean) {
+    val skin = LocalSkin.current
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(if (comfortable) skin.green.copy(alpha = 0.14f) else skin.bg3)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Mono(
+            "NEEDS %.1f GB".format(minRamMb / 1024.0),
+            color = if (comfortable) skin.green else skin.grey2,
+            size = 9, weight = FontWeight.Bold, spacing = 0.5,
+        )
+    }
+}
+
 @Composable
 fun FitChip(fit: Fit) {
     val skin = LocalSkin.current

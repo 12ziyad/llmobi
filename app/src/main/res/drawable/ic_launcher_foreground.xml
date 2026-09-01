@@ -4,7 +4,34 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!--
+      The mark is a bold L whose foot is broken off into a separate red block.
+      The gap reads as a signal, and the shape survives being masked into a
+      circle, a squircle or a rounded square - which is the only real constraint
+      an adaptive icon has.
+    -->
+
+    <!-- vertical stroke -->
     <path
         android:fillColor="#E8E6E1"
-        android:pathData="M40,32 L40,68 L70,68 L70,60 L49,60 L49,32 Z" />
+        android:pathData="M38,30 h13 v33 h-13 z" />
+
+    <!-- foot -->
+    <path
+        android:fillColor="#E8E6E1"
+        android:pathData="M38,63 h24 v13 h-24 z" />
+
+    <!-- detached signal block -->
+    <path
+        android:fillColor="#E5342A"
+        android:pathData="M67,63 h11 v13 h-11 z" />
+
+    <!-- ascending marks, echoing signal bars -->
+    <path
+        android:fillColor="#E5342A"
+        android:pathData="M67,52 h11 v7 h-11 z" />
+    <path
+        android:fillColor="#8E1E17"
+        android:pathData="M67,42 h11 v6 h-11 z" />
 </vector>

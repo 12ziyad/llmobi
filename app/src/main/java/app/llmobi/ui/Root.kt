@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,11 +23,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.llmobi.ui.screens.AppearanceScreen
 import app.llmobi.ui.screens.ChatScreen
 import app.llmobi.ui.screens.Drawer
+import app.llmobi.ui.screens.InstallSheet
 import app.llmobi.ui.screens.ModelSettingsScreen
 import app.llmobi.ui.screens.MyAisScreen
 import app.llmobi.ui.screens.PerfScreen
@@ -35,12 +38,28 @@ import app.llmobi.ui.screens.StorageScreen
 import app.llmobi.ui.screens.StoreScreen
 import app.llmobi.ui.theme.LLMobiTheme
 import app.llmobi.ui.theme.LocalSkin
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
 
 @Composable
 fun Root(s: AppState) {
     LLMobiTheme(s.theme) {
         val skin = LocalSkin.current
+
+        // The status and navigation bars are drawn by the system, not by us, so
+        // they need telling separately. Without this, choosing Light left dark
+        // icons on a dark system bar above a white app - which reads as "the
+        // theme did not change" even though everything else had.
+        val view = LocalView.current
+        if (!view.isInEditMode) {
+            SideEffect {
+                val window = (view.context as android.app.Activity).window
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = !skin.dark
+                    isAppearanceLightNavigationBars = !skin.dark
+                }
+            }
+        }
 
         Box(Modifier.fillMaxSize().background(skin.bg)) {
 
@@ -81,6 +100,16 @@ fun Root(s: AppState) {
                         .width(drawerW)
                         .graphicsLayer { translationX = slide * px }
                 ) { Drawer(s) }
+            }
+
+            // ---- install consent, above everything
+            s.pendingInstall?.let { m ->
+                InstallSheet(
+                    model = m,
+                    device = s.device,
+                    onCancel = { s.dismissInstall() },
+                    onInstall = { s.confirmInstall() },
+                )
             }
 
             // ---- transient message

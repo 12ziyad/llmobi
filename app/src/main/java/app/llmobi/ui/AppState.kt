@@ -83,6 +83,10 @@ class AppState(app: Application) : AndroidViewModel(app) {
         private set
     var toast by mutableStateOf<String?>(null)
 
+    /** Model awaiting the user's yes on the requirements sheet. */
+    var pendingInstall by mutableStateOf<ModelEntry?>(null)
+        private set
+
     private var genJob: Job? = null
     private var streamingMessageId: Long? = null
 
@@ -362,6 +366,24 @@ class AppState(app: Application) : AndroidViewModel(app) {
     }
 
     // ---------------------------------------------------------------- install
+
+    /** Opens the requirements sheet. Nothing downloads until they confirm. */
+    fun askInstall(m: ModelEntry) {
+        device = DeviceProfiler.read(ctx)
+        pendingInstall = m
+        drawerOpen = false
+    }
+
+    fun dismissInstall() {
+        pendingInstall = null
+    }
+
+    fun confirmInstall() {
+        val m = pendingInstall ?: return
+        pendingInstall = null
+        ModelDownloadWorker.start(ctx, m.id, wifiOnly)
+        toast = "Installing ${m.name} - keep going in the background"
+    }
 
     fun install(m: ModelEntry) {
         ModelDownloadWorker.start(ctx, m.id, wifiOnly)

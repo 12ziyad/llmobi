@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!--
-      Transparent system bars: Compose draws edge to edge and sets the icon
-      colour itself, so anything hardcoded here would fight the chosen theme.
-    -->
     <style name="Theme.LLMobi" parent="android:Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
