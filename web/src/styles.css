@@ -72,10 +72,14 @@ a { color: inherit; text-decoration: none; }
   text-transform: uppercase; color: var(--grey-2);
 }
 h1 {
-  font-weight: 900; text-transform: uppercase; line-height: 0.82;
-  font-size: clamp(52px, 15.5vw, 68px); letter-spacing: 0.005em; margin-top: 16px;
+  font-weight: 900; text-transform: uppercase; line-height: 0.84;
+  /* Sized for the longest line ("USE AI ON YOUR PHONE", 20 characters). Big
+     Shoulders is condensed enough that ~11.5vw keeps it on one line down to a
+     320px screen; anything larger wraps and the shape falls apart. */
+  font-size: clamp(34px, 11.5vw, 54px); letter-spacing: 0.005em; margin-top: 16px;
 }
 h1 span { display: block; color: var(--red); }
+.nb { display: inline; }
 .sub {
   margin-top: 20px; font-size: 15px; line-height: 1.55;
   color: var(--grey); max-width: 34ch;
@@ -408,7 +412,9 @@ h1 span { display: block; color: var(--red); }
     content: ""; position: absolute; left: 0; right: 0; bottom: 0;
     height: 6px; background: var(--red);
   }
-  h1 { font-size: clamp(60px, 6.2vw, 92px); }
+  h1 { font-size: clamp(44px, 4.9vw, 72px); }
+  /* Desktop has the width for the full first line, so drop the extra break. */
+  .nb { display: none; }
   .sub { font-size: 16px; max-width: 38ch; }
 
   .demo { max-width: 420px; }

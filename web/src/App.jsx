@@ -301,11 +301,16 @@ export default function App() {
       <div className="split">
         <div className="hero">
           <div className="eyebrow">Local AI — Android</div>
-          <h1>AI that never<br />leaves<span>your phone</span></h1>
+          {/* The break after "on" only exists on narrow screens: four lines there,
+              three on desktop. Left to wrap on its own it broke differently at
+              every width and the shape fell apart. */}
+          <h1>
+            Use AI on<br className="nb" />{' '}your phone<br />
+            with no internet<span>and no bill</span>
+          </h1>
           <p className="sub">
-            Not a chatbot that phones a datacentre. The whole model downloads once
-            and then runs on <b>your phone's own chip</b> — on a plane, in a tunnel,
-            with the SIM taken out. Nothing you type ever leaves the device.
+            Download it once over wi-fi. After that it works on a train, on a plane,
+            with no data left — and it <b>never asks you to sign up or pay</b>.
           </p>
           <Demo />
           <div className="cta">
