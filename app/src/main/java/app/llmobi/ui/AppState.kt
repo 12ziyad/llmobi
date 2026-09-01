@@ -25,6 +25,7 @@ import app.llmobi.engine.Engines
 import app.llmobi.engine.Turn
 import app.llmobi.perf.Perf
 import app.llmobi.perf.Run
+import app.llmobi.safety.Safety
 import app.llmobi.ui.theme.ThemeChoice
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -255,14 +256,58 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
             // Loading reads hundreds of megabytes off flash. It happens on the
             // engine thread, but the user still needs to see that we are busy.
-            loadingModel = !(Engines.currentModelId == m.id && Engines.engine().loaded)
+            val alreadyUp = Engines.currentModelId == m.id && Engines.engine().loaded
+
+            // Everything below re-checks reality at the moment of loading rather
+            // than trusting what the store decided earlier: free memory moves,
+            // downloads get truncated, and this may be a phone we have never seen.
+            if (!alreadyUp) {
+                val file = java.io.File(inst.path)
+                if (!Safety.looksLikeGguf(file)) {
+                    Perf.endLive()
+                    finishStream(
+                        aiId,
+                        "That model file looks incomplete. Delete ${m.name} from the menu " +
+                            "and install it again - the download was probably interrupted.",
+                    )
+                    return@launch
+                }
+                if (Safety.isBlocked(ctx, m.id)) {
+                    Perf.endLive()
+                    finishStream(
+                        aiId,
+                        "${m.name} has crashed this phone twice while loading, so I have " +
+                            "stopped trying. A smaller AI will work better here. You can " +
+                            "force it from Settings if you want to try anyway.",
+                    )
+                    return@launch
+                }
+            }
+
+            device = DeviceProfiler.read(ctx)
+            val usableMb = device.availableRamMb + (device.totalRamMb - device.availableRamMb) / 5
+            val plan = Safety.planLoad(usableMb, m.minRamMb, ctxSize)
+            if (!plan.ok) {
+                Perf.endLive()
+                finishStream(aiId, plan.reason ?: "Not enough free memory right now.")
+                return@launch
+            }
+            plan.reason?.let { engineNote = it }
+
+            loadingModel = !alreadyUp
             val loadStart = System.currentTimeMillis()
-            val ok = Engines.ensureLoaded(m.id, inst.path, ctxSize)
+            if (!alreadyUp) Safety.beginLoad(ctx, m.id)
+            val ok = Engines.ensureLoaded(m.id, inst.path, plan.contextSize)
+            if (!alreadyUp) Safety.endLoad(ctx, m.id, ok)
             val loadMs = if (loadingModel) System.currentTimeMillis() - loadStart else 0L
             loadingModel = false
             if (!ok) {
                 Perf.endLive()
-                finishStream(aiId, "I could not load onto this phone right now. Close some apps and try again.")
+                finishStream(
+                    aiId,
+                    "${m.name} would not load on this phone. Close some other apps and try " +
+                        "again, or pick a smaller AI from the menu.",
+                )
                 return@launch
             }
             engineNote = if (Engines.usingRealEngine) null else "Preview engine - llama.cpp not built yet"

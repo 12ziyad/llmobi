@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import app.llmobi.data.Catalog
 import app.llmobi.data.ModelEntry
 import app.llmobi.device.Fit
+import app.llmobi.safety.Safety
 import app.llmobi.shortcut.Shortcuts
 import app.llmobi.ui.AppState
 import app.llmobi.ui.Screen
@@ -230,6 +231,7 @@ fun MyAisScreen(s: AppState) {
 @Composable
 fun SettingsScreen(s: AppState) {
     val skin = LocalSkin.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val usedGb = "%.1f".format(s.installed.sumOf { it.bytes } / 1_073_741_824.0)
 
     Column(Modifier.fillMaxSize().background(skin.bg).statusBarsPadding()) {
@@ -301,6 +303,44 @@ fun SettingsScreen(s: AppState) {
                                     Mono(v, color = skin.grey, size = 9, spacing = 0.4)
                                 }
                             }
+                        }
+                    }
+                }
+            }
+            // A crash report the person can read and choose to send, rather than
+            // telemetry we take. Same information, opposite default.
+            item {
+                val crash = remember { Safety.lastCrash(ctx) }
+                if (crash != null) {
+                    SectionLabel("Something went wrong")
+                    Card {
+                        Column {
+                            Mono("LAST CRASH", color = skin.red, size = 9, weight = FontWeight.Bold)
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                crash.lineSequence().take(6).joinToString(System.lineSeparator()),
+                                color = skin.grey2, fontSize = 11.sp, lineHeight = 16.sp,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(Modifier.weight(1f)) {
+                                    BigButton("Copy report", ghost = true) {
+                                        val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                                            as android.content.ClipboardManager
+                                        cm.setPrimaryClip(
+                                            android.content.ClipData.newPlainText("LLMobi crash", crash)
+                                        )
+                                        s.toast = "Copied - paste it into a bug report"
+                                    }
+                                }
+                                Box(Modifier.weight(1f)) {
+                                    BigButton("Dismiss", ghost = true) {
+                                        Safety.clearCrash(ctx); s.toast = "Cleared"
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(9.dp))
+                            Mono("NOTHING IS SENT UNLESS YOU SEND IT", size = 8)
                         }
                     }
                 }

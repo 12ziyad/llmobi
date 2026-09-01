@@ -4,11 +4,18 @@ import android.app.Application
 import android.util.Log
 import app.llmobi.engine.Engines
 import app.llmobi.engine.LlamaBridge
+import app.llmobi.safety.Safety
 
 class LLMobiApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Before anything else: if the last launch died mid-load, that model gets
+        // a strike. Two strikes and we stop offering to load it automatically,
+        // which is what stops a bad model becoming an app that crashes on open.
+        Safety.installCrashHandler(this)
+        Safety.recordCrashIfInterrupted(this)
 
         // Touch the bridge once at startup so a missing or broken native library
         // shows up in logcat immediately, rather than as a silent fallback to the
