@@ -13,13 +13,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # still kept, so native crashes remain readable.
 set(CMAKE_C_FLAGS_DEBUG   "-O3 -g -DNDEBUG" CACHE STRING "" FORCE)
 set(CMAKE_CXX_FLAGS_DEBUG "-O3 -g -DNDEBUG" CACHE STRING "" FORCE)
+set(CMAKE_C_FLAGS_RELWITHDEBINFO   "-O3 -g -DNDEBUG" CACHE STRING "" FORCE)
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -g -DNDEBUG" CACHE STRING "" FORCE)
 
 # Belt and braces. The cache variables above are the tidy fix, but they only
 # survive if C is enabled in project() first - enabling a language re-runs the
 # toolchain's flag initialisation and silently resets them. This directory-level
 # option is applied to every target defined below, ggml included, and nothing
 # downstream can undo it.
-add_compile_options($<$<CONFIG:Debug>:-O3>)
+# Debug defaults to -O0 and RelWithDebInfo (what AGP uses for release) to -O2.
+# ggml is measurably faster at -O3, and it is the only code here hot enough to
+# care, so pin both.
+add_compile_options($<$<CONFIG:Debug>:-O3> $<$<CONFIG:RelWithDebInfo>:-O3>)
 
 # Build only what we need from llama.cpp. Skipping tools/tests/examples cuts the
 # build from minutes to seconds and keeps the APK small.
