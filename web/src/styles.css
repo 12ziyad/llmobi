@@ -276,6 +276,37 @@ h1 span { display: block; color: var(--red); }
   font-family: var(--f-mono); font-size: 8.5px; letter-spacing: 0.1em;
   text-transform: uppercase; color: #7a756d;
 }
+/* ---------------- how it works ---------------- */
+.how { margin-top: 22px; max-width: 420px; }
+.how-btn {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  background: transparent; border: 1px solid var(--line); color: var(--bone);
+  font-family: var(--f-disp); font-weight: 800; font-size: 17px;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 14px 16px; cursor: pointer; transition: border-color 0.16s;
+}
+.how-btn:hover { border-color: var(--red); }
+.how.open .how-btn { border-color: var(--red); border-bottom: none; }
+.how-btn i { font-style: normal; color: var(--red); font-size: 20px; line-height: 1; }
+.how-steps {
+  list-style: none; margin: 0; padding: 4px 16px 16px;
+  border: 1px solid var(--red); border-top: none;
+}
+.how-steps li { display: flex; gap: 13px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+.how-steps li:last-child { border-bottom: none; }
+.how-steps b {
+  font-family: var(--f-mono); font-size: 10px; color: var(--red);
+  letter-spacing: 0.1em; padding-top: 3px; flex: none;
+}
+.how-steps strong {
+  display: block; font-family: var(--f-disp); font-weight: 800; font-size: 17px;
+  text-transform: uppercase; letter-spacing: 0.03em; color: var(--bone);
+}
+.how-steps p { margin-top: 5px; font-size: 13px; line-height: 1.6; color: var(--grey); }
+
+.brand { display: flex; align-items: center; gap: 9px; }
+.brand img { display: block; }
+
 .sideload {
   margin-top: 14px; font-family: var(--f-mono); font-size: 9.5px;
   line-height: 1.85; color: var(--grey-2); letter-spacing: 0.03em;

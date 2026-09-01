@@ -1,5 +1,59 @@
 import { useEffect, useState } from 'react'
 
+const STEPS = [
+  {
+    n: '01',
+    t: 'Get the app',
+    d: 'Tap Download above. Android will warn you because it did not come from the Play Store - that is normal for a direct download. Tap More details, then Install anyway.',
+  },
+  {
+    n: '02',
+    t: 'Open it and pick an AI',
+    d: 'The app opens straight into a chat. Tap the menu, then Browse, and you will see every model sorted so the ones your phone handles best come first.',
+  },
+  {
+    n: '03',
+    t: 'Tap Install on one',
+    d: 'It shows exactly what that model needs - download size against your free storage, memory needed against what your phone has - and lets you decide. Nothing downloads until you say yes.',
+  },
+  {
+    n: '04',
+    t: 'Wait once',
+    d: 'The model downloads from Hugging Face, between 0.4 GB and 18 GB depending which one. It carries on in the background and resumes if your signal drops.',
+  },
+  {
+    n: '05',
+    t: 'Turn the internet off',
+    d: 'Airplane mode, no SIM, a tunnel - it does not matter. The AI now runs on your phone’s own processor. Nothing you type ever leaves the device.',
+  },
+]
+
+/** Collapsed by default: it answers a question, it should not shout it. */
+function HowItWorks() {
+  const [open, setOpen] = useState(false)
+  return (
+    <section className={'how' + (open ? ' open' : '')}>
+      <button className="how-btn" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span>How it works</span>
+        <i>{open ? '−' : '+'}</i>
+      </button>
+      {open && (
+        <ol className="how-steps">
+          {STEPS.map((s) => (
+            <li key={s.n}>
+              <b>{s.n}</b>
+              <div>
+                <strong>{s.t}</strong>
+                <p>{s.d}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  )
+}
+
 const API = 'https://llmobi-api.gpmai.workers.dev/v1/catalog'
 const APK = '/llmobi.apk'
 const APK_SIZE = '7.2 MB'
@@ -70,7 +124,7 @@ function Demo() {
   return (
     <div className="demo">
       <div className="demo-hd">
-        <span>How it works</span>
+        <span>Watch it work</span>
         <b>0{i + 1} / 04</b>
       </div>
 
@@ -222,7 +276,10 @@ export default function App() {
   return (
     <div className="site">
       <header className="top">
-        <div className="brand">LL<em>MOBI</em></div>
+        <div className="brand">
+          <img src="/icon.svg" alt="" width="26" height="26" />
+          LL<em>MOBI</em>
+        </div>
         <div className="pill"><span className="pip" />Offline</div>
       </header>
 
@@ -240,11 +297,8 @@ export default function App() {
             <div className="fine">
               <span>{APK_SIZE}</span><span>·</span><span>ANDROID 8+</span><span>·</span><span>NO ACCOUNT</span>
             </div>
-            <p className="sideload">
-              Android will warn you about installing outside the Play Store — that is
-              normal for a direct download. Tap <b>More details</b> then <b>Install anyway</b>.
-            </p>
           </div>
+          <HowItWorks />
         </div>
 
         <div className="side">
