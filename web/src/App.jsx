@@ -1,37 +1,36 @@
 import { useEffect, useState } from 'react'
 
-// The launch catalog. Later this comes from the Worker at /v1/catalog so the
-// site and the app always agree; the shape is identical either way.
-const MODELS = [
-  { name: 'Gemma 3 · 1B',   size: '0.8 GB',  ram: 2,  bar: 0.16, tag: 'very fast' },
-  { name: 'Llama 3.2 · 3B', size: '2.0 GB',  ram: 4,  bar: 0.32, tag: 'fast' },
-  { name: 'Qwen 3 · 4B',    size: '2.5 GB',  ram: 5,  bar: 0.41, tag: 'fast' },
-  { name: 'Llama 3.1 · 8B', size: '4.9 GB',  ram: 8,  bar: 0.66, tag: 'steady' },
-  { name: 'Qwen 3 · 14B',   size: '9.0 GB',  ram: 14, bar: 0.88, tag: 'slow', hot: true },
-  { name: 'Gemma 3 · 27B',  size: '16.4 GB', ram: 24, bar: 1.0,  tag: 'experimental', hot: true },
+const API = 'https://llmobi-api.gpmai.workers.dev/v1/catalog'
+const APK = '/llmobi.apk'
+const APK_SIZE = '7.2 MB'
+
+/**
+ * Shown before the API responds, and kept if it never does. A visitor should
+ * never see an empty store because a fetch was slow.
+ */
+const FALLBACK = [
+  { id: 'qwen25-05b', name: 'Qwen 0.5B', sizeLabel: '0.40 GB', minRamMb: 1012, tier: 'tiny', speedHint: 'very fast', tagline: 'Tiny and instant.' },
+  { id: 'llama32-1b', name: 'Llama 1B', sizeLabel: '0.95 GB', minRamMb: 1719, tier: 'tiny', speedHint: 'very fast', tagline: "Meta's small everyday assistant." },
+  { id: 'gemma3-4b', name: 'Gemma 4B', sizeLabel: '2.3 GB', minRamMb: 3469, tier: 'fast', speedHint: 'fast', tagline: 'Everyday AI.' },
+  { id: 'llama31-8b', name: 'Llama 8B', sizeLabel: '4.6 GB', minRamMb: 6366, tier: 'powerful', speedHint: 'steady', tagline: 'Strong general assistant.' },
+]
+
+const TIERS = [
+  { key: 'tiny', label: 'Tiny', blurb: 'Runs on almost any phone' },
+  { key: 'fast', label: 'Fast', blurb: 'For 6-8 GB phones' },
+  { key: 'powerful', label: 'Powerful', blurb: 'For 12 GB phones' },
+  { key: 'pro', label: 'Pro', blurb: 'For 16 GB flagships' },
+  { key: 'extreme', label: 'Extreme', blurb: 'Experimental, 24 GB+' },
 ]
 
 const BEATS = [
-  {
-    ms: 2600, net: true, label: '5G',
-    cap: 'Tap install', sub: 'one time only', key: 'store',
-  },
-  {
-    ms: 2500, net: true, label: '5G',
-    cap: 'It downloads', sub: 'once — then never again', key: 'dl',
-  },
-  {
-    ms: 2600, net: false, label: '✈ OFF',
-    cap: 'Now cut the net', sub: 'airplane mode, no sim, tunnel', key: 'ready',
-  },
-  {
-    ms: 4200, net: false, label: '✈ OFF',
-    cap: 'It still works', sub: 'forever, on your phone alone', key: 'chat',
-  },
+  { ms: 2600, net: true, label: '5G', cap: 'Tap install', sub: 'one time only', key: 'store' },
+  { ms: 2500, net: true, label: '5G', cap: 'It downloads', sub: 'once — then never again', key: 'dl' },
+  { ms: 2600, net: false, label: '✈ OFF', cap: 'Now cut the net', sub: 'airplane mode, no sim, tunnel', key: 'ready' },
+  { ms: 4200, net: false, label: '✈ OFF', cap: 'It still works', sub: 'forever, on your phone alone', key: 'chat' },
 ]
 
-const ANSWER =
-  'Frozen water — about 1.09 litres, since ice expands when it freezes.'
+const ANSWER = 'Frozen water — about 1.09 litres, since ice expands when it freezes.'
 
 /** The four-beat story: install, download, go offline, still works. */
 function Demo() {
@@ -94,7 +93,7 @@ function Demo() {
                     <div className="pico">G</div>
                     <div>
                       <div className="pnm">Gemma 1B</div>
-                      <div className="psz">0.8 GB · everyday AI</div>
+                      <div className="psz">0.94 GB · everyday AI</div>
                     </div>
                   </div>
                   <div className="pbtn">Install</div>
@@ -116,7 +115,7 @@ function Demo() {
                     </div>
                   </div>
                   <div className="ptrack"><div className="pfill" style={{ width: pct + '%' }} /></div>
-                  <div className="pnums"><span>0.8 GB</span><span>WI-FI</span></div>
+                  <div className="pnums"><span>0.94 GB</span><span>WI-FI</span></div>
                 </div>
               </>
             )}
@@ -140,10 +139,7 @@ function Demo() {
         </div>
       </div>
 
-      <div className="cap">
-        <b>{beat.cap}</b>
-        <i>{beat.sub}</i>
-      </div>
+      <div className="cap"><b>{beat.cap}</b><i>{beat.sub}</i></div>
       <div className="dots">
         {BEATS.map((_, n) => <i key={n} className={n === i ? 'on' : ''} />)}
       </div>
@@ -151,27 +147,69 @@ function Demo() {
   )
 }
 
+/**
+ * The live catalog, straight from the same API the phone reads. The site and the
+ * app can never disagree about what is available, because there is only one list.
+ */
 function Models() {
+  const [models, setModels] = useState(FALLBACK)
+  const [state, setState] = useState('loading')
+
+  useEffect(() => {
+    let alive = true
+    fetch(API)
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((d) => {
+        if (!alive || !d.models?.length) return
+        setModels(d.models)
+        setState('live')
+      })
+      .catch(() => alive && setState('offline'))
+    return () => { alive = false }
+  }, [])
+
+  const maxRam = Math.max(...models.map((m) => m.minRamMb || 0), 1)
+
   return (
     <section className="models" id="models">
       <div className="mh">
         <h2>Model library</h2>
-        <span>RAM needed</span>
+        <span>
+          {state === 'live' ? `${models.length} models · live` : state === 'loading' ? 'loading…' : 'offline'}
+        </span>
       </div>
-      {MODELS.map((m) => (
-        <div className="row" key={m.name}>
-          <div>
-            <div className="rn">{m.name}</div>
-            <div className="rs">{m.size} · {m.tag}</div>
-          </div>
-          <div>
-            <div className="bar">
-              <i className={m.hot ? 'hot' : ''} style={{ width: m.bar * 100 + '%' }} />
+
+      {TIERS.map((tier) => {
+        const rows = models.filter((m) => (m.tier || '').toLowerCase() === tier.key)
+        if (!rows.length) return null
+        return (
+          <div className="tier" key={tier.key}>
+            <div className="tier-hd">
+              <b>{tier.label}</b>
+              <span>{tier.blurb}</span>
             </div>
-            <div className="need">{m.ram} GB</div>
+            {rows.map((m) => {
+              const gb = (m.minRamMb / 1024)
+              const heavy = m.minRamMb > 12000
+              return (
+                <div className="row" key={m.id}>
+                  <div>
+                    <div className="rn">{m.name}</div>
+                    <div className="rs">{m.sizeLabel} · {m.speedHint}</div>
+                  </div>
+                  <div>
+                    <div className="bar">
+                      <i className={heavy ? 'hot' : ''} style={{ width: (m.minRamMb / maxRam) * 100 + '%' }} />
+                    </div>
+                    <div className="need">{gb < 10 ? gb.toFixed(1) : Math.round(gb)} GB</div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
-        </div>
-      ))}
+        )
+      })}
+
       <p className="mnote">
         The app reads your phone and <b>hides what won't run.</b><br />
         You never have to work any of this out yourself.
@@ -198,10 +236,14 @@ export default function App() {
           </p>
           <Demo />
           <div className="cta">
-            <a className="dl" href="#models">Download for Android</a>
+            <a className="dl" href={APK} download>Download for Android</a>
             <div className="fine">
-              <span>48 MB</span><span>·</span><span>ANDROID 8+</span><span>·</span><span>NO ACCOUNT</span>
+              <span>{APK_SIZE}</span><span>·</span><span>ANDROID 8+</span><span>·</span><span>NO ACCOUNT</span>
             </div>
+            <p className="sideload">
+              Android will warn you about installing outside the Play Store — that is
+              normal for a direct download. Tap <b>More details</b> then <b>Install anyway</b>.
+            </p>
           </div>
         </div>
 

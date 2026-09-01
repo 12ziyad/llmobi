@@ -33,3 +33,6 @@ Thumbs.db
 # Signing - NEVER commit
 llmobi-release.jks
 keystore.properties
+
+# Hosted build artifact, produced by assembleRelease
+web/public/llmobi.apk

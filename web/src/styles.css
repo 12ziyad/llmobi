@@ -262,6 +262,27 @@ h1 span { display: block; color: var(--red); }
 }
 
 /* ---------------- models ---------------- */
+.tier { margin-top: 18px; }
+.tier:first-of-type { margin-top: 10px; }
+.tier-hd {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding-bottom: 7px; border-bottom: 1px solid var(--ink);
+}
+.tier-hd b {
+  font-family: var(--f-disp); font-weight: 800; font-size: 16px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.tier-hd span {
+  font-family: var(--f-mono); font-size: 8.5px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #7a756d;
+}
+.sideload {
+  margin-top: 14px; font-family: var(--f-mono); font-size: 9.5px;
+  line-height: 1.85; color: var(--grey-2); letter-spacing: 0.03em;
+  max-width: 44ch;
+}
+.sideload b { color: var(--bone); font-weight: 400; }
+
 .models { background: var(--bone); color: var(--ink); padding: 26px 20px 24px; }
 .mh {
   display: flex; justify-content: space-between; align-items: baseline;
