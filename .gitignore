@@ -36,3 +36,7 @@ keystore.properties
 
 # Hosted build artifact, produced by assembleRelease
 web/public/llmobi.apk
+
+# Local device handles
+.dev
+.wireless

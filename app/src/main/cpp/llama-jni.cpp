@@ -290,11 +290,26 @@ Java_app_llmobi_engine_LlamaBridge_nativeStartChat(
     if (s->smpl) llama_sampler_free(s->smpl);
     auto sp = llama_sampler_chain_default_params();
     s->smpl = llama_sampler_chain_init(sp);
+    // Order matters. Narrow the candidates first, then penalise repeats, then
+    // pick - the penalty sampler warns against scanning a full vocabulary.
+    llama_sampler_chain_add(s->smpl, llama_sampler_init_top_k(40));
+
+    // Without this a small model falls into loops, restating the same sentence
+    // until it hits the token cap. Small models are especially prone to it, and
+    // it is the single most visible quality problem in a 0.5B.
+    //   last_n 256  - how far back to look
+    //   repeat 1.12 - mild; too high starts mangling ordinary grammar
+    //   freq 0.35   - scales with how often a token already appeared
+    //   present 0.4 - a flat cost for reusing anything at all
+    llama_sampler_chain_add(
+        s->smpl,
+        llama_sampler_init_penalties(llama_vocab_n_tokens(vocab), 256, 1.12f, 0.35f, 0.4f));
+
     if (temperature <= 0.01f) {
         llama_sampler_chain_add(s->smpl, llama_sampler_init_greedy());
     } else {
-        llama_sampler_chain_add(s->smpl, llama_sampler_init_top_k(40));
         llama_sampler_chain_add(s->smpl, llama_sampler_init_top_p(0.95f, 1));
+        llama_sampler_chain_add(s->smpl, llama_sampler_init_min_p(0.05f, 1));
         llama_sampler_chain_add(s->smpl, llama_sampler_init_temp(temperature));
         llama_sampler_chain_add(s->smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
     }

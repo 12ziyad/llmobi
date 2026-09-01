@@ -323,11 +323,23 @@ class AppState(app: Application) : AndroidViewModel(app) {
      */
     private fun buildTurns(system: String, user: String): List<Turn> {
         val out = ArrayList<Turn>(12)
+        // Naming the model matters more than it looks. Asked "what are you", a
+        // small model with no identity in its prompt confabulates one from
+        // whatever assistant text dominated its training data - ours cheerfully
+        // claimed to be Claude, made by Anthropic.
+        //
+        // State it positively and never name another company. An earlier version
+        // said "you were not made by OpenAI, Anthropic or Google" and the model
+        // simply echoed one of them back: at this size, a negation mostly just
+        // raises the probability of the word being negated.
+        val name = model?.name ?: "an AI assistant"
         out += Turn(
             "system",
             system.ifBlank {
-                "You are a helpful assistant running locally on the user's phone. " +
-                    "Answer directly and keep it short unless asked for detail."
+                "You are $name, a small AI model running entirely on the user's " +
+                    "phone, offline. If you are asked who or what you are, say you are " +
+                    "$name running locally on this device. Answer directly and keep it " +
+                    "short unless asked for detail."
             },
         )
         messages
