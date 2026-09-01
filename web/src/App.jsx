@@ -80,130 +80,6 @@ const TIERS = [
   { key: 'extreme', label: 'Extreme', blurb: 'Experimental, 24 GB+' },
 ]
 
-const BEATS = [
-  { ms: 2600, net: true, label: '5G', cap: 'Tap install', sub: 'one time only', key: 'store' },
-  { ms: 2500, net: true, label: '5G', cap: 'It downloads', sub: 'once — then never again', key: 'dl' },
-  { ms: 2600, net: false, label: '✈ OFF', cap: 'Now cut the net', sub: 'airplane mode, no sim, tunnel', key: 'ready' },
-  { ms: 4200, net: false, label: '✈ OFF', cap: 'It still works', sub: 'forever, on your phone alone', key: 'chat' },
-]
-
-const ANSWER = 'Frozen water — about 1.09 litres, since ice expands when it freezes.'
-
-/** The four-beat story: install, download, go offline, still works. */
-function Demo() {
-  const [i, setI] = useState(0)
-  const [pct, setPct] = useState(0)
-  const [typed, setTyped] = useState('')
-  const beat = BEATS[i]
-
-  useEffect(() => {
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const t = setTimeout(() => setI((n) => (n + 1) % BEATS.length), reduce ? 3000 : beat.ms)
-    return () => clearTimeout(t)
-  }, [i, beat.ms])
-
-  useEffect(() => {
-    if (beat.key !== 'dl') { setPct(0); return }
-    let p = 0
-    const id = setInterval(() => {
-      p += 4
-      setPct(Math.min(p, 100))
-      if (p >= 100) clearInterval(id)
-    }, 80)
-    return () => clearInterval(id)
-  }, [beat.key])
-
-  useEffect(() => {
-    if (beat.key !== 'chat') { setTyped(''); return }
-    let n = 0
-    const id = setInterval(() => {
-      n += 1
-      setTyped(ANSWER.slice(0, n))
-      if (n >= ANSWER.length) clearInterval(id)
-    }, 42)
-    return () => clearInterval(id)
-  }, [beat.key])
-
-  return (
-    <div className="demo">
-      <div className="demo-hd">
-        <span>Watch it work</span>
-        <b>0{i + 1} / 04</b>
-      </div>
-
-      <div className="ph">
-        <div className="ph-scr">
-          <div className={'ph-st' + (beat.net ? '' : ' off')}>
-            <span>9:41</span>
-            <span className="st-r">
-              <span className="netlbl">{beat.label}</span>
-              <span className="sig"><i /><i /><i /><i /></span>
-            </span>
-          </div>
-
-          <div className="ph-bd">
-            {beat.key === 'store' && (
-              <>
-                <div className="ph-ttl">LLMobi</div>
-                <div className="pcard">
-                  <div className="pcard-top">
-                    <div className="pico">G</div>
-                    <div>
-                      <div className="pnm">Gemma 1B</div>
-                      <div className="psz">0.94 GB · everyday AI</div>
-                    </div>
-                  </div>
-                  <div className="pbtn">Install</div>
-                  <div className="ripple" />
-                </div>
-                <div className="pfoot">RUNS GREAT ON THIS PHONE</div>
-              </>
-            )}
-
-            {beat.key === 'dl' && (
-              <>
-                <div className="ph-ttl">Installing</div>
-                <div className="pcard">
-                  <div className="pcard-top">
-                    <div className="pico">G</div>
-                    <div>
-                      <div className="pnm">Gemma 1B</div>
-                      <div className="psz">downloading…</div>
-                    </div>
-                  </div>
-                  <div className="ptrack"><div className="pfill" style={{ width: pct + '%' }} /></div>
-                  <div className="pnums"><span>0.94 GB</span><span>WI-FI</span></div>
-                </div>
-              </>
-            )}
-
-            {beat.key === 'ready' && (
-              <div className="pready">
-                <div className="ptick">✓</div>
-                <div className="pdone">Gemma is ready</div>
-                <div className="pofflbl">INTERNET OFF</div>
-              </div>
-            )}
-
-            {beat.key === 'chat' && (
-              <>
-                <div className="pb me">what is 1kg of ice?</div>
-                <div className="pb ai">{typed}<span className="pcar" /></div>
-                <div className="pin">Ask anything…</div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="cap"><b>{beat.cap}</b><i>{beat.sub}</i></div>
-      <div className="dots">
-        {BEATS.map((_, n) => <i key={n} className={n === i ? 'on' : ''} />)}
-      </div>
-    </div>
-  )
-}
-
 /**
  * The live catalog, straight from the same API the phone reads. The site and the
  * app can never disagree about what is available, because there is only one list.
@@ -321,7 +197,6 @@ export default function App() {
             </div>
           </div>
           <HowItWorks />
-          <Demo />
         </div>
 
         <div className="side">

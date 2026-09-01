@@ -1,0 +1,9 @@
+Site: remove the phone animation
+
+The looping demo earned its place when the download button lived below it;
+with the button above the fold it was 500px of motion between the CTA and
+the model library, answering a question the How-it-works accordion already
+answers in words. Removed along with its component and constants, so the
+bundle drops the dead weight too.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
