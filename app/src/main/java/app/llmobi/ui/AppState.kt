@@ -10,6 +10,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.llmobi.data.Catalog
+import app.llmobi.data.CatalogSync
 import app.llmobi.data.Chat
 import app.llmobi.data.Installed
 import app.llmobi.data.Message
@@ -53,10 +54,17 @@ class AppState(app: Application) : AndroidViewModel(app) {
     var device by mutableStateOf(DeviceProfiler.read(ctx))
         private set
 
+    /**
+     * The catalog actually in use. Starts as whatever is cached on disk (or the
+     * bundled list), then swaps to the freshly fetched one if a refresh lands.
+     */
+    var catalog by mutableStateOf(CatalogSync.load(ctx))
+        private set
+
     // ---- model + chat state
     var modelId by mutableStateOf(prefs.getString("last_model", null))
         private set
-    val model: ModelEntry? get() = modelId?.let { Catalog.byId(it) }
+    val model: ModelEntry? get() = modelId?.let { id -> catalog.firstOrNull { it.id == id } ?: Catalog.byId(id) }
 
     var installed = mutableStateListOf<Installed>()
         private set
@@ -80,11 +88,19 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     init {
         refresh()
+        // Fire and forget: the store is already usable from the cached list, so
+        // a slow or absent network only ever means slightly stale entries.
+        viewModelScope.launch {
+            if (CatalogSync.refresh(ctx)) {
+                catalog = CatalogSync.load(ctx)
+                refresh()
+            }
+        }
         // If nothing was ever chosen, land on the smallest thing this phone can run.
         if (modelId == null) {
-            val best = DeviceProfiler.rank(Catalog.models, device)
+            val best = DeviceProfiler.rank(catalog, device)
                 .firstOrNull { it.second == Fit.EXCELLENT }?.first
-            modelId = best?.id ?: Catalog.models.first().id
+            modelId = best?.id ?: catalog.first().id
         }
     }
 
@@ -126,7 +142,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     fun fitOf(m: ModelEntry): Fit = DeviceProfiler.fit(m, device)
 
-    fun ranked(): List<Pair<ModelEntry, Fit>> = DeviceProfiler.rank(Catalog.models, device)
+    fun ranked(): List<Pair<ModelEntry, Fit>> = DeviceProfiler.rank(catalog, device)
 
     fun settingsFor(id: String): ModelSettings = store.settings(id)
 

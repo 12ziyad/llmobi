@@ -10,11 +10,11 @@ crons = ["0 4 * * 1"]
 [[d1_databases]]
 binding = "DB"
 database_name = "llmobi"
-database_id = "local-dev-placeholder"
+database_id = "b164ab37-c0dc-4b12-a9bb-9024867e133c"
 
 [[kv_namespaces]]
 binding = "CACHE"
-id = "local-dev-placeholder"
+id = "33751f4b081f4186b01455e76de17433"
 
 # Optional model mirror. Zero egress fees is the whole reason this exists.
 # [[r2_buckets]]
