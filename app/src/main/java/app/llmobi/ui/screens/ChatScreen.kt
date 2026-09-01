@@ -92,6 +92,26 @@ fun ChatScreen(s: AppState) {
                     spacing = 1.2,
                 )
             }
+            // A quiet download indicator where every platform puts one: top
+            // right, a ring filling up, gone the moment the file lands.
+            val dl = s.activeDownloads.entries.firstOrNull()
+            if (dl != null) {
+                Box(
+                    Modifier
+                        .size(38.dp)
+                        .clickable { s.drawerOpen = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        progress = { (dl.value / 100f).coerceIn(0.02f, 1f) },
+                        modifier = Modifier.size(26.dp),
+                        strokeWidth = 2.5.dp,
+                        color = skin.red,
+                        trackColor = skin.bg3,
+                    )
+                    Mono("${dl.value}", color = skin.fg, size = 7, spacing = 0.0)
+                }
+            }
             IconBtn("+") { s.newChat() }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(skin.line))

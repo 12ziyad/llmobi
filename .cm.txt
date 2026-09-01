@@ -1,0 +1,26 @@
+Second architecture verified on hardware; no more self-introductions
+
+Gemma 1B installed through the real pipeline - 1,011,738,880 bytes, byte
+exact against the catalog - loaded as gemma3 with its own chat template, and
+answered. On this 4 GB phone the memory plan shrank the context to 1024
+automatically, which is precisely the situation it was written for. Asked who
+it is: "I am Gemma 1B, a large language model created by the Gemma team at
+Google DeepMind" - which is, unlike most small-model self-descriptions, true.
+
+Two changes:
+
+The identity prompt told the model what to say about itself, so a small model
+said it - at the top of every single answer. The prompt now states the name
+as a fact with an explicit no-greeting instruction, and answers came back
+clean. Prompting small models is mostly about what you can stop them
+repeating.
+
+Downloads now show a progress ring in the chat top bar, fed by the WorkInfo
+progress the worker was already publishing, and it disappears when the file
+lands. Previously the only progress lived in a notification.
+
+Also of note, verbatim from the same phone: Qwen 0.5B says a kilogram of ice
+weighs one kilogram; Gemma 1B says 900 grams. Small models vary, and that is
+a model property, not an app bug.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

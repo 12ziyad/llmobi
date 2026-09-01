@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -89,6 +90,9 @@ class AppState(app: Application) : AndroidViewModel(app) {
     /** Model awaiting the user's yes on the requirements sheet. */
     var pendingInstall by mutableStateOf<ModelEntry?>(null)
         private set
+
+    /** modelId -> percent, for every download currently running. Drives the top-bar ring. */
+    val activeDownloads = mutableStateMapOf<String, Int>()
 
     private var genJob: Job? = null
     private var streamingMessageId: Long? = null
@@ -386,10 +390,12 @@ class AppState(app: Application) : AndroidViewModel(app) {
         out += Turn(
             "system",
             system.ifBlank {
-                "You are $name, a small AI model running entirely on the user's " +
-                    "phone, offline. If you are asked who or what you are, say you are " +
-                    "$name running locally on this device. Answer directly and keep it " +
-                    "short unless asked for detail."
+                // Terse on purpose. A small model parrots its system prompt, so a
+                // sentence about introducing itself made it introduce itself at the
+                // top of every single answer. Identity stays (or it claims to be
+                // Claude again), but framed as a fact, not an instruction to speak.
+                "You are $name. Answer only what the user asked, with no greeting " +
+                    "and no introduction. Keep answers short unless asked for detail."
             },
         )
         messages
@@ -463,12 +469,18 @@ class AppState(app: Application) : AndroidViewModel(app) {
                 .collect { infos ->
                     val info = infos.firstOrNull() ?: return@collect
                     when (info.state) {
+                        WorkInfo.State.RUNNING, WorkInfo.State.ENQUEUED -> {
+                            activeDownloads[modelId] =
+                                info.progress.getInt(ModelDownloadWorker.KEY_PROGRESS, 0)
+                        }
                         WorkInfo.State.SUCCEEDED -> {
+                            activeDownloads.remove(modelId)
                             refresh()
                             val name = catalog.firstOrNull { it.id == modelId }?.name ?: modelId
                             toast = "$name is ready"
                         }
-                        WorkInfo.State.FAILED -> {
+                        WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
+                            activeDownloads.remove(modelId)
                             refresh()
                             toast = info.outputData.getString(ModelDownloadWorker.KEY_ERROR)
                                 ?: "The download stopped. Tap install to try again."
