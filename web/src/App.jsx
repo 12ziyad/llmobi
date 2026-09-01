@@ -286,10 +286,11 @@ export default function App() {
       <div className="split">
         <div className="hero">
           <div className="eyebrow">Local AI — Android</div>
-          <h1>AI that<br />works with<span>no internet</span></h1>
+          <h1>AI that never<br />leaves<span>your phone</span></h1>
           <p className="sub">
-            Download a model once. After that it runs on <b>your phone's own chip</b> —
-            on a plane, in a tunnel, with the SIM taken out.
+            Not a chatbot that phones a datacentre. The whole model downloads once
+            and then runs on <b>your phone's own chip</b> — on a plane, in a tunnel,
+            with the SIM taken out. Nothing you type ever leaves the device.
           </p>
           <Demo />
           <div className="cta">
