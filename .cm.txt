@@ -1,0 +1,11 @@
+Site: download button above the fold, brighter open-source link
+
+The primary CTA sat below a 500px animation, which pushed it off the first
+screen on most phones - the one button the page exists for required a scroll
+to find. Order is now headline, subhead, download, how-it-works, and the
+animation last as a supporting act, slightly smaller.
+
+The open-source link was dim grey on charcoal; now bone with a bone border,
+red on hover, so the header actually shows it.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

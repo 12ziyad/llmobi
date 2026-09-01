@@ -314,7 +314,6 @@ export default function App() {
             Download it once over wi-fi. After that it works on a train, on a plane,
             with no data left — and it <b>never asks you to sign up or pay</b>.
           </p>
-          <Demo />
           <div className="cta">
             <a className="dl" href={APK}>Download for Android</a>
             <div className="fine">
@@ -322,6 +321,7 @@ export default function App() {
             </div>
           </div>
           <HowItWorks />
+          <Demo />
         </div>
 
         <div className="side">

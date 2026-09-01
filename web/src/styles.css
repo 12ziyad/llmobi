@@ -88,8 +88,8 @@ h1 span { display: block; color: var(--red); }
 
 /* ---------------- demo ---------------- */
 .demo {
-  margin-top: 28px; border: 1px solid var(--line); background: var(--ink-2);
-  padding: 20px 16px 16px; display: flex; flex-direction: column; align-items: center;
+  margin-top: 22px; border: 1px solid var(--line); background: var(--ink-2);
+  padding: 16px 14px 14px; display: flex; flex-direction: column; align-items: center;
   max-width: 380px;
 }
 .demo-hd {
@@ -251,7 +251,7 @@ h1 span { display: block; color: var(--red); }
 .dots i.on { background: var(--red); }
 
 /* ---------------- cta ---------------- */
-.cta { margin-top: 28px; max-width: 380px; }
+.cta { margin-top: 26px; max-width: 380px; }
 .dl {
   display: block; width: 100%; background: var(--red); color: #fff;
   font-family: var(--f-disp); font-weight: 800; text-transform: uppercase;
@@ -311,11 +311,11 @@ h1 span { display: block; color: var(--red); }
 .top-r { display: flex; align-items: center; gap: 10px; }
 .src {
   display: flex; align-items: center; gap: 7px;
-  font-family: var(--f-mono); font-size: 9.5px; letter-spacing: 0.12em;
-  text-transform: uppercase; color: var(--grey);
-  border: 1px solid var(--line); padding: 5px 10px; transition: 0.16s;
+  font-family: var(--f-mono); font-size: 10px; font-weight: 500;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--bone);
+  border: 1px solid var(--bone-2); padding: 6px 12px; transition: 0.16s;
 }
-.src:hover { color: var(--bone); border-color: var(--grey-2); }
+.src:hover { color: var(--red); border-color: var(--red); }
 .src svg { display: block; flex: none; }
 
 .licence {
