@@ -44,39 +44,12 @@ export async function download(request, env, ctx) {
   return Response.redirect(APK_URL, 302)
 }
 
-// ---------------------------------------------------------------- auth
+// The dashboard is deliberately open: it is read-only and shows nothing but
+// aggregate counts - no IP addresses, no identifiers, nothing per-person is
+// stored in the first place. A password only made it awkward to check from a
+// phone. Search engines are told to stay away so it is not stumbled upon.
 
-function unauthorized() {
-  return new Response('Authentication required.', {
-    status: 401,
-    headers: { 'WWW-Authenticate': 'Basic realm="LLMobi admin", charset="UTF-8"' },
-  })
-}
-
-/**
- * Constant-time-ish comparison. Not a hard security boundary - this guards a
- * page of download counts, not anything destructive - but there is no reason to
- * leak the password one character at a time either.
- */
-function same(a, b) {
-  if (a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return diff === 0
-}
-
-function authed(request, env) {
-  const expected = env.ADMIN_PASSWORD
-  if (!expected) return false
-  const header = request.headers.get('authorization') || ''
-  if (!header.startsWith('Basic ')) return false
-  try {
-    const [, pass] = atob(header.slice(6)).split(':')
-    return same(pass || '', expected)
-  } catch {
-    return false
-  }
-}
+const PRIVATE = { 'x-robots-tag': 'noindex, nofollow' }
 
 // ---------------------------------------------------------------- stats
 
@@ -119,9 +92,8 @@ async function gather(env) {
 }
 
 export async function stats(request, env) {
-  if (!authed(request, env)) return unauthorized()
   return new Response(JSON.stringify(await gather(env), null, 2), {
-    headers: { 'content-type': 'application/json; charset=utf-8' },
+    headers: { 'content-type': 'application/json; charset=utf-8', ...PRIVATE },
   })
 }
 
@@ -131,7 +103,6 @@ const esc = (s) =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 export async function admin(request, env) {
-  if (!authed(request, env)) return unauthorized()
   const s = await gather(env)
 
   const peak = Math.max(1, ...s.days.map((d) => d.n))
@@ -261,6 +232,6 @@ footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);
 </footer>
 
 </div></body></html>`,
-    { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } }
+    { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...PRIVATE } }
   )
 }
