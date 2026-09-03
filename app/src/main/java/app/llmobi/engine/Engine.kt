@@ -74,14 +74,44 @@ object LlamaBridge {
     var available: Boolean = false
         private set
 
+    /** Why the real engine is not available, in words a person can read. Null when it is. */
+    @Volatile
+    var unavailableReason: String? = null
+        private set
+
     init {
-        available = try {
+        // The library is built for armv8.2-a+dotprod+fp16 (see CMakeLists). On
+        // a chip without those instructions the first matrix multiply would be
+        // an illegal-instruction crash, which no try/catch can see. Check first.
+        val missing = missingCpuFeatures()
+        available = if (missing.isNotEmpty()) {
+            unavailableReason =
+                "This phone's processor is missing an instruction the AI engine needs " +
+                    "(${missing.joinToString()}). It is a 2016-17 design, and this app " +
+                    "cannot run on it. Sorry."
+            Log.w("LlamaBridge", "cpu lacks $missing; not loading native library")
+            false
+        } else try {
             System.loadLibrary("llmobi")
             true
         } catch (t: Throwable) {
             Log.w("LlamaBridge", "native library not present yet: ${t.message}")
+            unavailableReason = "The AI engine failed to load: ${t.message}"
             false
         }
+    }
+
+    /**
+     * Features the library was compiled to assume that this CPU does not report.
+     * Reads the kernel's own list, so it is right even on chips we have never seen.
+     */
+    private fun missingCpuFeatures(): List<String> {
+        val line = runCatching {
+            java.io.File("/proc/cpuinfo").readLines().firstOrNull { it.startsWith("Features") }
+        }.getOrNull() ?: return emptyList() // cannot read it: assume fine, the loader will tell us
+        val have = line.substringAfter(':').trim().split(' ').toSet()
+        val need = mapOf("asimddp" to "dot product", "asimdhp" to "half precision")
+        return need.filterKeys { it !in have }.values.toList()
     }
 
     external fun nativeInit(): Boolean
@@ -113,10 +143,7 @@ class LlamaEngine : Engine {
         withContext(EngineDispatcher) {
             if (!LlamaBridge.available) return@withContext false
             unloadOnEngineThread()
-            val cores = Runtime.getRuntime().availableProcessors()
-            // Leave a core or two for the UI and the OS; more threads than the
-            // big cluster has just makes it thrash.
-            val threads = (cores - 2).coerceIn(2, 6)
+            val threads = pickThreads()
             // Pull the file through the page cache first. llama.cpp mmaps it, so
             // without this the weights arrive as millions of random page faults
             // during the first decode - measured at 28 s on a Galaxy F15. One big
@@ -136,6 +163,34 @@ class LlamaEngine : Engine {
             Log.i("LlamaEngine", "load ${if (handle != 0L) "ok" else "FAILED"} (ctx=$contextSize threads=$threads)")
             handle != 0L
         }
+
+    /**
+     * How many threads to hand ggml. The answer is "the fast cores", and the
+     * kernel tells us which those are.
+     *
+     * ggml splits every layer across its threads and then waits for the slowest
+     * one, so a thread on a little core does not add a little - it drags the
+     * whole layer down to little-core speed. Cores whose maximum clock is within
+     * 20% of the fastest are treated as the fast set. On a 4+4 or 1+3+4 chip that
+     * is the big cluster; on a 2+6 chip the littles clock close enough to count,
+     * and there cores-minus-two measured best on a Dimensity 6100+.
+     */
+    private fun pickThreads(): Int {
+        val cores = Runtime.getRuntime().availableProcessors()
+        val fallback = (cores - 2).coerceIn(2, 6)
+        val freqs = (0 until cores).map { i ->
+            runCatching {
+                java.io.File("/sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_max_freq")
+                    .readText().trim().toLong()
+            }.getOrDefault(0L)
+        }
+        val top = freqs.maxOrNull() ?: 0L
+        if (top <= 0L) return fallback
+        val fast = freqs.count { it >= top * 4 / 5 }
+        val chosen = if (fast in 3 until cores) fast.coerceAtMost(8) else fallback
+        Log.i("LlamaEngine", "cpu clusters (kHz): $freqs -> $chosen threads")
+        return chosen
+    }
 
     /**
      * Reads the whole model file sequentially and throws the bytes away. The

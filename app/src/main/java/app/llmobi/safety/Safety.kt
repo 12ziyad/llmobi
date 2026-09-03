@@ -92,18 +92,18 @@ object Safety {
 
         if (headroom >= 0) return Plan(true, wantContext, null)
 
-        // Short by a little: shrink the context and try anyway.
-        if (headroom > -400 && wantContext > 1024) {
-            return Plan(true, 1024, "Running with a shorter memory to fit the space left.")
-        }
-
-        return Plan(
-            false,
-            wantContext,
-            "This model needs about ${needMb / 1024} GB of free memory and there is " +
-                "roughly ${(availableMb / 1024.0 * 10).toInt() / 10.0} GB right now. " +
-                "Close some apps and try again, or pick a smaller AI.",
-        )
+        // Short: shrink the context and try anyway. This used to refuse when the
+        // gap was large, and that was the wrong call - the estimate is a guess,
+        // phones lie about free memory, and a person who tapped Install anyway
+        // has already been told the risk. Let them find out. If it really cannot
+        // fit, the load fails or the stall watchdog fires, and both explain why.
+        val ctx = if (wantContext > 1024) 1024 else wantContext
+        val note = if (headroom > -400)
+            "Running with a shorter memory to fit the space left."
+        else
+            "Memory is tight for this model - it may be slow or stop partway. " +
+                "Closing other apps helps."
+        return Plan(true, ctx, note)
     }
 
     // ------------------------------------------------------------ crash log

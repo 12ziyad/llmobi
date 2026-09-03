@@ -1,0 +1,46 @@
+Answer the HN thread: real speed, honest identity, no more gatekeeping
+
+A reader on a Redmi Note 13 Pro reported Qwen 0.5B taking five minutes to
+say "I am a large language model created by Anthropic", then stopping - and
+that PocketPal, the same llama.cpp on the same phone, "simply flies". They
+were right on every count. What was wrong, and what changed:
+
+Speed. Cross-compiling for Android, ggml gets no -march at all, so every
+matrix kernel was built for baseline armv8-a with no dot-product and no
+half-precision arithmetic. The build now targets armv8.2-a+dotprod+fp16.
+Turning that on also switched ggml's weight repacking on, which converts
+Q4_0 into an interleaved copy in anonymous memory - and that measured
+slower here (9.3 tok/s against 15.8) while doubling resident weight memory
+on a phone that cannot spare it. Repacking is now off (use_extra_bufts).
+Net on a Dimensity 6100+: prompt processing 25-52 ms/token -> 14.8, warm
+generation unchanged at ~16 tok/s, and the memory footprint is the mmap
+alone.
+
+Threads. (cores - 2) capped at 6 was a number measured on one phone and
+assumed for all. ggml waits for its slowest thread every layer, so a thread
+on a little core drags the whole layer down. Cores are now read from
+cpufreq: those within 20% of the fastest clock are the fast set, and that
+is the thread count when it forms a real cluster.
+
+Compatibility. armv8.2 excludes a few 2016-17 chips (A53/A73 only), which
+would now crash on the first multiply. LlamaBridge reads /proc/cpuinfo
+before loading the library and shows a plain sentence instead.
+
+Identity. The terse system prompt ("You are Qwen 0.5B...") was not enough
+at half a billion parameters; the model still answered "created by
+Anthropic". Identity questions now get a worked example turn instead of
+an instruction, stated purely positively with the real maker - the first
+draft contained "not made by" and the model dropped the "not". Verified:
+"I am Qwen 0.5B, an open model created by Alibaba Cloud in China."
+
+Stalls. A phone that is out of memory does not fail, it pages weights from
+flash for minutes. A 45-second watchdog now stops generation that has not
+produced a word and says why.
+
+Gatekeeping. planLoad no longer refuses; the install sheet says "not sure
+this will run well" in amber and the button says "Try it anyway"; the site
+no longer claims to hide what won't run or that anything runs on almost
+any phone. The estimate is a guess and the person tapping the button has
+been told the risk. Let them find out.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

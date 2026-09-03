@@ -126,30 +126,35 @@ fun InstallSheet(
                         Text("✓", color = skin.green, fontSize = 15.sp)
                         Spacer(Modifier.width(9.dp))
                         Text(
-                            "Your phone can run this comfortably.",
+                            "Looks like it fits. Speed depends on your phone.",
                             color = skin.grey, fontSize = 12.5.sp,
                         )
                     }
                 }
             } else {
+                // A warning, not a verdict. The memory figure is an estimate and
+                // phones under-report what they can free, so "won't run" was
+                // wrong often enough to be dishonest. Say what we know and let
+                // them try.
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .background(skin.red.copy(alpha = 0.10f))
-                        .border(BorderStroke(1.dp, skin.red))
+                        .background((if (!storeOk) skin.red else skin.amber).copy(alpha = 0.10f))
+                        .border(BorderStroke(1.dp, if (!storeOk) skin.red else skin.amber))
                         .padding(13.dp)
                 ) {
                     Mono(
-                        if (!storeOk) "NOT ENOUGH STORAGE" else "MORE MEMORY THAN THIS PHONE HAS",
-                        color = skin.red, size = 9, weight = FontWeight.Bold,
+                        if (!storeOk) "NOT ENOUGH STORAGE" else "NOT SURE THIS WILL RUN WELL",
+                        color = if (!storeOk) skin.red else skin.amber, size = 9, weight = FontWeight.Bold,
                     )
                     Spacer(Modifier.height(7.dp))
                     Text(
                         if (!storeOk)
                             "Free up some space first, or the download will not finish."
                         else
-                            "It may run slowly, or stop partway through an answer. " +
-                                "Closing other apps frees memory and can help.",
+                            "Your phone has less free memory than this model usually wants. " +
+                                "It might still work - many do. If it is very slow or stops, " +
+                                "close other apps, or a smaller AI will fly.",
                         color = skin.grey, fontSize = 12.5.sp, lineHeight = 18.sp,
                     )
                 }
@@ -157,7 +162,7 @@ fun InstallSheet(
 
             Spacer(Modifier.height(18.dp))
             BigButton(
-                if (allGood) "Install · ${model.sizeLabel}" else "Install anyway",
+                if (allGood || !storeOk) "Install · ${model.sizeLabel}" else "Try it anyway · ${model.sizeLabel}",
                 danger = !allGood,
                 onClick = onInstall,
             )

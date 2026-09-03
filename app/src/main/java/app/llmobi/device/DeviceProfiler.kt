@@ -28,7 +28,7 @@ enum class Fit(val label: String) {
     EXCELLENT("Excellent"),
     RECOMMENDED("Recommended"),
     HEAVY("Heavy"),
-    WONT_RUN("Won't run"),
+    WONT_RUN("Not sure"),
     NO_SPACE("Not enough space"),
 }
 

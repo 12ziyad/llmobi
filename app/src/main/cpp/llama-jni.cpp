@@ -144,6 +144,13 @@ Java_app_llmobi_engine_LlamaBridge_nativeLoadModel(
     // No GPU offload for v1. Mobile Vulkan drivers vary far too much to trust
     // silently, and a wrong guess here is a hard crash rather than a slow reply.
     mp.n_gpu_layers = 0;
+    // No weight repacking. With dotprod available ggml would convert Q4_0
+    // tensors into an interleaved layout at load - a copy that lives in
+    // anonymous memory rather than the mmap, so the weights can no longer be
+    // shared with the page cache or dropped under pressure, and on a 4 GB
+    // phone that is the difference between paging and running. Measured on a
+    // Dimensity 6100+: 9.3 tok/s repacked against 17 tok/s from the mmap.
+    mp.use_extra_bufts = false;
 
     llama_model *model = llama_model_load_from_file(path.c_str(), mp);
     if (!model) {

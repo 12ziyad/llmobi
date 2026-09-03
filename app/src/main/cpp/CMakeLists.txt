@@ -36,6 +36,20 @@ set(LLAMA_BUILD_COMMON   OFF CACHE BOOL "" FORCE)
 set(LLAMA_CURL           OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS    OFF CACHE BOOL "" FORCE)
 
+# Target the instructions every phone since 2018 actually has.
+#
+# Cross-compiling for Android, ggml passes no -march at all, so the matrix
+# kernels were built for baseline armv8-a: no dot-product, no half-precision
+# arithmetic. A reader on a Redmi Note 13 Pro measured PocketPal - the same
+# llama.cpp, the same model, the same phone - running "much, much faster",
+# and this was most of the reason. dotprod alone is a 2-3x on 4-bit weights.
+#
+# armv8.2-a+dotprod+fp16 covers Cortex-A55/A75 and everything after. A handful
+# of 2016-17 chips (A53/A73 only) lack it and would SIGILL on load, so
+# LlamaBridge checks /proc/cpuinfo before loading the library and shows a
+# plain message instead of crashing.
+set(GGML_CPU_ARM_ARCH "armv8.2-a+dotprod+fp16" CACHE STRING "" FORCE)
+
 # OpenMP is unreliable across NDK versions and buys little at this thread count.
 set(GGML_OPENMP  OFF CACHE BOOL "" FORCE)
 set(GGML_LLAMAFILE ON  CACHE BOOL "" FORCE)

@@ -4,7 +4,7 @@ const STEPS = [
   {
     n: '01',
     t: 'Get the app',
-    d: 'Tap Download above. Android will warn you because it did not come from the Play Store - that is normal for a direct download. Tap More details, then Install anyway.',
+    d: 'Tap Download above. It is a direct download rather than a Play Store listing for now, so Android asks you to confirm - tap More details, then Install anyway.',
   },
   {
     n: '02',
@@ -73,7 +73,7 @@ const FALLBACK = [
 ]
 
 const TIERS = [
-  { key: 'tiny', label: 'Tiny', blurb: 'Runs on almost any phone' },
+  { key: 'tiny', label: 'Tiny', blurb: 'The smallest and fastest' },
   { key: 'fast', label: 'Fast', blurb: 'For 6-8 GB phones' },
   { key: 'powerful', label: 'Powerful', blurb: 'For 12 GB phones' },
   { key: 'pro', label: 'Pro', blurb: 'For 16 GB flagships' },
@@ -144,8 +144,8 @@ function Models() {
       })}
 
       <p className="mnote">
-        The app reads your phone and <b>hides what won't run.</b><br />
-        You never have to work any of this out yourself.
+        The app checks your phone and <b>tells you what each one needs</b><br />
+        before you install. Then it is your call.
       </p>
     </section>
   )

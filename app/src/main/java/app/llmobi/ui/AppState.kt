@@ -237,6 +237,10 @@ class AppState(app: Application) : AndroidViewModel(app) {
             toast = "Install ${m.name} first."
             return
         }
+        app.llmobi.engine.LlamaBridge.unavailableReason?.let {
+            toast = it
+            return
+        }
 
         if (chatId == null) {
             chatId = store.newChat(m.id, trimmed.take(48))
@@ -326,6 +330,19 @@ class AppState(app: Application) : AndroidViewModel(app) {
             var lastPush = 0L
             var tokens = 0
             var firstWordAt = 0L
+            var stalled = false
+            // A phone that is genuinely out of memory does not fail - it pages
+            // the weights in from flash for every token and sits there for
+            // minutes. Someone reported exactly that: five minutes, then nothing.
+            // Forty-five seconds with no first word is not "thinking", so stop
+            // and say what happened rather than let them wait.
+            val watchdog = launch {
+                kotlinx.coroutines.delay(45_000)
+                if (firstWordAt == 0L) {
+                    stalled = true
+                    Engines.engine().stop()
+                }
+            }
             try {
                 // collect, never collectLatest: collectLatest cancels the previous
                 // token's handler when the next arrives, which silently drops text.
@@ -346,6 +363,18 @@ class AppState(app: Application) : AndroidViewModel(app) {
                 }
             } catch (_: Throwable) {
                 // Falls through to whatever was produced before the failure.
+            }
+            watchdog.cancel()
+            if (stalled) {
+                Perf.endLive()
+                finishStream(
+                    aiId,
+                    "${m.name} could not get going - after 45 seconds it had not produced " +
+                        "a word, which usually means the phone is out of memory and paging " +
+                        "the model in from storage. Close other apps and try again, or pick " +
+                        "a smaller AI from the menu.",
+                )
+                return@launch
             }
             val endedAt = System.currentTimeMillis()
             Perf.endLive()
@@ -391,13 +420,31 @@ class AppState(app: Application) : AndroidViewModel(app) {
             "system",
             system.ifBlank {
                 // Terse on purpose. A small model parrots its system prompt, so a
-                // sentence about introducing itself made it introduce itself at the
-                // top of every single answer. Identity stays (or it claims to be
-                // Claude again), but framed as a fact, not an instruction to speak.
+                // sentence telling it to introduce itself made it introduce itself
+                // at the top of every single answer.
                 "You are $name. Answer only what the user asked, with no greeting " +
                     "and no introduction. Keep answers short unless asked for detail."
             },
         )
+        // An instruction is not enough at half a billion parameters. Told only
+        // "you are Qwen 0.5B", the model still answered "I am a large language
+        // model created by Anthropic", because that sentence pattern is far more
+        // common in its training data than the truth about itself. A worked
+        // example outweighs an instruction at this size, so identity questions
+        // get one - and only they do, since every extra turn is prompt the phone
+        // must re-read before it can say a word.
+        if (asksWhoItIs(user)) {
+            out += Turn("user", "Who are you? Who made you?")
+            // Purely positive. The first draft said "I am not made by the
+            // company behind any chat website" and the model answered "I was
+            // created by the company behind any chat website" - it dropped the
+            // "not". Every word in this example must be true without a negation.
+            out += Turn(
+                "assistant",
+                "I am $name, an open model made by ${makerOf(model)}. " +
+                    "I run locally on this phone, and nothing you type here is sent anywhere.",
+            )
+        }
         messages
             .dropLast(2)
             .takeLast(8)
@@ -405,6 +452,39 @@ class AppState(app: Application) : AndroidViewModel(app) {
             .forEach { out += Turn(if (it.role == "me") "user" else "assistant", it.text) }
         out += Turn("user", user)
         return out
+    }
+
+    /**
+     * Does this message ask the model what it is? Deliberately broad - a false
+     * positive costs one short example turn, a false negative costs the model
+     * claiming to be someone else's product in front of a stranger.
+     */
+    /** The organisation that trained the weights, from the model id. */
+    private fun makerOf(m: ModelEntry?): String {
+        val id = (m?.id ?: "").lowercase()
+        return when {
+            id.startsWith("qwen") -> "Alibaba"
+            id.startsWith("gemma") -> "Google"
+            id.startsWith("llama") -> "Meta"
+            id.startsWith("phi") -> "Microsoft"
+            id.startsWith("gpt") -> "OpenAI"
+            id.startsWith("deepseek") -> "DeepSeek"
+            id.startsWith("mistral") -> "Mistral AI"
+            id.startsWith("smol") -> "Hugging Face"
+            else -> "an open research team"
+        }
+    }
+
+    private fun asksWhoItIs(text: String): Boolean {
+        val t = text.lowercase()
+        val aboutIt = listOf(
+            "who are you", "what are you", "who made you", "who created you",
+            "who built you", "who developed you", "what model", "which model",
+            "your name", "are you chatgpt", "are you claude", "are you gpt",
+            "are you gemini", "are you an ai", "introduce yourself",
+            "tell me about yourself", "what is your name",
+        )
+        return aboutIt.any { t.contains(it) }
     }
 
     private fun finishStream(aiId: Long, finalText: String) {

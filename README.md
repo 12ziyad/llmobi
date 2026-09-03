@@ -220,14 +220,22 @@ ratio   = usable / model.minRamMb
 ratio >= 1.80  →  Excellent
 ratio >= 1.25  →  Recommended
 ratio >= 1.00  →  Heavy
-otherwise      →  Won't run
+otherwise      →  Not sure
 ```
 
 `minRamMb` is `fileMB * 1.25 + 500`, calibrated against the one case actually
-measured: Qwen 0.5B (408 MB of weights) runs comfortably alongside Compose and
-the Android runtime with ~1040 MB free. Storage is checked separately, with a 1 GB cushion so the phone is never filled completely.
+measured: Qwen 0.5B (408 MB of weights) alongside Compose and the Android
+runtime with ~1040 MB free. Storage is checked separately, with a 1 GB cushion so the phone is never filled completely.
 
-The user sees a coloured word. They never see a number, and never see `GGUF`, `Q4_K_M`, `KV cache` or `tokens/sec`.
+None of this ever blocks an install. The sheet shows what the model needs
+against what the phone has, marks it as fitting or not, and the button still
+says *Try it anyway*. The estimate is a guess and phones under-report what they
+can free; the honest thing is to say so and let the person find out. If a load
+genuinely cannot fit, it fails with a message, and if generation produces no
+word in 45 seconds - the signature of a phone paging weights in from flash -
+a watchdog stops it and says why.
+
+The user never sees `GGUF`, `Q4_K_M`, `KV cache` or `tokens/sec`.
 
 ---
 
