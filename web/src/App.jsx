@@ -4,7 +4,7 @@ const STEPS = [
   {
     n: '01',
     t: 'Get the app',
-    d: 'Tap Download above. It is a direct download rather than a Play Store listing for now, so Android asks you to confirm - tap More details, then Install anyway.',
+    d: 'Tap Download above, open the APK, and follow Android’s installation prompts. Your phone may ask you to allow installs from your browser.',
   },
   {
     n: '02',
@@ -90,15 +90,19 @@ function Models() {
 
   useEffect(() => {
     let alive = true
-    fetch(API)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10000)
+    fetch(API, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d) => {
-        if (!alive || !d.models?.length) return
+        if (!alive) return
+        if (!Array.isArray(d.models) || !d.models.length) throw new Error('Empty catalog')
         setModels(d.models)
         setState('live')
       })
       .catch(() => alive && setState('offline'))
-    return () => { alive = false }
+      .finally(() => clearTimeout(timeout))
+    return () => { alive = false; clearTimeout(timeout); controller.abort() }
   }, [])
 
   const maxRam = Math.max(...models.map((m) => m.minRamMb || 0), 1)
@@ -152,6 +156,18 @@ function Models() {
 }
 
 export default function App() {
+  const [release, setRelease] = useState(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 10000)
+    fetch('https://llmobi-api.gpmai.workers.dev/v1/release', { signal: controller.signal })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        const r = data?.release
+        if (r && /^\d+\.\d+\.\d+$/.test(r.versionName) && r.bytes > 0) setRelease(r)
+      }).catch(() => {}).finally(() => clearTimeout(timer))
+    return () => { clearTimeout(timer); controller.abort() }
+  }, [])
   return (
     <div className="site">
       <header className="top">
@@ -193,10 +209,18 @@ export default function App() {
           <div className="cta">
             <a className="dl" href={APK}>Download for Android</a>
             <div className="fine">
-              <span>{APK_SIZE}</span><span>·</span><span>ANDROID 8+</span><span>·</span><span>NO ACCOUNT</span>
+              <span>{release ? `${(release.bytes / 1048576).toFixed(1)} MB · v${release.versionName}` : APK_SIZE}</span><span>·</span><span>ANDROID 8+</span><span>·</span><span>NO ACCOUNT</span>
             </div>
           </div>
+          <p className="compatibility">
+            Requires a compatible 64-bit ARM phone. Some older processors are unsupported;
+            the app checks before you download a model.
+          </p>
+          <p className="download-help">Download not starting? <a href="/llmobi.apk" download>Use the direct APK link</a>.</p>
           <HowItWorks />
+          <p className="compatibility">Model recommendations use your available memory and storage.
+            Catalog fixes arrive when you are online. New app versions appear in Settings for you to install;
+            your chats and downloaded models stay on your phone.</p>
         </div>
 
         <div className="side">

@@ -93,16 +93,22 @@ fun TopBar(title: String, onBack: (() -> Unit)? = null, trailing: String? = null
 @Composable
 fun StoreScreen(s: AppState) {
     val skin = LocalSkin.current
-    val ranked = remember(s.device, s.installed.size) { s.ranked() }
+    val ranked = remember(s.catalog, s.device, s.installed.toList()) { s.ranked() }
 
     Column(Modifier.fillMaxSize().background(skin.bg).statusBarsPadding()) {
-        TopBar("Store", onBack = { s.go(Screen.CHAT) }, trailing = "${s.device.totalRamMb / 1024} GB PHONE")
+        TopBar("Store", onBack = { s.go(Screen.CHAT) }, trailing = "%.1f GB RAM".format(s.device.totalRamMb / 1024.0))
         LazyColumn(
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.weight(1f),
         ) {
-            item { SectionLabel("Best for your phone") }
+            item {
+                SectionLabel(if (s.device.supported) "Best for your phone" else "Model library")
+                Text(if (!s.device.supported) "This phone cannot run this version of the AI engine. You can browse the library, but model downloads are unavailable."
+                    else "%.1f GB usable memory · %.1f GB free storage. Smaller models usually respond faster. These are estimates, not guaranteed speeds."
+                    .format(s.device.usableRamMb / 1024.0, s.device.freeStorageMb / 1024.0),
+                    color = skin.grey2, fontSize = 12.sp)
+            }
             items(ranked, key = { it.first.id }) { (m, fit) ->
                 ModelRow(m, fit, s)
             }
@@ -132,20 +138,23 @@ private fun ModelRow(m: ModelEntry, fit: Fit, s: AppState) {
                     Spacer(Modifier.width(7.dp))
                     NeedChip(m.minRamMb, fit == Fit.EXCELLENT || fit == Fit.RECOMMENDED)
                 }
+                Spacer(Modifier.height(4.dp))
+                Text(fit.label, fontSize = 11.sp,
+                    color = if (fit == Fit.EXCELLENT || fit == Fit.RECOMMENDED) skin.green else skin.grey2)
             }
             Spacer(Modifier.width(8.dp))
             Box(
                 Modifier
                     .clip(RoundedCornerShape(999.dp))
-                    .background(if (installed) skin.green.copy(alpha = 0.16f) else skin.red)
-                    .clickable {
+                    .background(if (!s.device.supported) skin.bg3 else if (installed) skin.green.copy(alpha = 0.16f) else skin.red)
+                    .clickable(enabled = s.device.supported) {
                         if (installed) { s.selectModel(m.id); s.go(Screen.CHAT) } else s.askInstall(m)
                     }
                     .padding(horizontal = 13.dp, vertical = 7.dp)
             ) {
                 Mono(
-                    if (installed) "OPEN" else "INSTALL",
-                    color = if (installed) skin.green else skin.onRed,
+                    if (!s.device.supported) "—" else if (installed) "OPEN" else "INSTALL",
+                    color = if (!s.device.supported) skin.grey2 else if (installed) skin.green else skin.onRed,
                     size = 10, weight = FontWeight.Bold, spacing = 0.8,
                 )
             }
@@ -194,7 +203,7 @@ fun MyAisScreen(s: AppState) {
                 }
             }
             items(s.installed, key = { it.modelId }) { inst ->
-                val m = Catalog.byId(inst.modelId) ?: return@items
+                val m = s.findModel(inst.modelId) ?: return@items
                 Card(onClick = { s.selectModel(m.id); s.go(Screen.CHAT) }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ModelIcon(m, 36)
@@ -266,6 +275,28 @@ fun SettingsScreen(s: AppState) {
                     value = "›",
                     onClick = { s.go(Screen.PERFORMANCE) },
                 )
+            }
+            item {
+                SectionLabel("App updates")
+                val update = s.availableUpdate
+                Card {
+                    Column {
+                        Text(if (update != null) "LLMobi ${update.versionName} is available" else "LLMobi ${app.llmobi.BuildConfig.VERSION_NAME}", color = skin.fg, fontSize = 15.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Text(update?.notes ?: "Checks for updates when connected. Chats and installed models work offline.", color = skin.grey2, fontSize = 12.sp)
+                        s.updateMessage?.let { Text(it, color = skin.grey2, fontSize = 12.sp) }
+                        Spacer(Modifier.height(10.dp))
+                        when {
+                            s.updateProgress != null -> {
+                                Text("Downloading update: ${s.updateProgress}%", color = skin.fg, fontSize = 12.sp)
+                                BigButton("Cancel download", ghost = true) { s.cancelUpdate() }
+                            }
+                            update != null && s.updateReady -> BigButton("Install update") { s.installUpdate() }
+                            update != null -> BigButton("Download update · %.1f MB".format(update.bytes / 1048576.0)) { s.downloadUpdate() }
+                        }
+                        BigButton("Check for updates", ghost = true) { s.onForeground(force = true) }
+                    }
+                }
             }
             item { SectionLabel("Privacy") }
             item {
@@ -347,7 +378,7 @@ fun SettingsScreen(s: AppState) {
             }
             item {
                 Spacer(Modifier.height(10.dp))
-                SettingRow("About", sub = "version 1.0.0 · open source")
+                SettingRow("About", sub = "version ${app.llmobi.BuildConfig.VERSION_NAME} · open source")
                 Spacer(Modifier.height(20.dp).navigationBarsPadding())
             }
         }
@@ -411,7 +442,7 @@ fun StorageScreen(s: AppState) {
                 item { Box(Modifier.padding(16.dp)) { Mono("NOTHING INSTALLED", size = 10) } }
             }
             items(s.installed, key = { it.modelId }) { inst ->
-                val m = Catalog.byId(inst.modelId) ?: return@items
+                val m = s.findModel(inst.modelId) ?: return@items
                 Card {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ModelIcon(m, 32)
@@ -443,7 +474,7 @@ fun StorageScreen(s: AppState) {
     }
 
     confirmDelete?.let { id ->
-        val m = Catalog.byId(id) ?: return@let
+        val m = s.findModel(id) ?: return@let
         DeleteSheet(
             model = m,
             chats = s.chatCount(id),

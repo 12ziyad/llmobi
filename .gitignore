@@ -40,3 +40,9 @@ web/public/llmobi.apk
 # Local device handles
 .dev
 .wireless
+
+# Kotlin incremental state and local release evidence
+.kotlin/
+release-artifacts/
+web/test-results/
+web/playwright-report/

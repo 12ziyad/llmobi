@@ -62,6 +62,7 @@ for b in blocks:
         'hf_file': hf_file,
         'url': url,
         'lic': field(b, 'license'),
+        'sha': field(b, 'sha256') or '',
     })
 
 
@@ -76,17 +77,19 @@ lines = [
 ]
 for r in rows:
     lines.append(
-        'INSERT OR REPLACE INTO models '
+        'INSERT INTO models '
         '(id,name,tagline,tier,category,icon_letter,color_start,color_end,'
         'size_label,speed_hint,file_bytes,min_ram_mb,ctx_default,arch,quant,'
-        'hf_repo,hf_file,url,license,status,updated_at) VALUES ('
+        'hf_repo,hf_file,url,license,sha256,status,updated_at) VALUES ('
         + ','.join([
             q(r['id']), q(r['name']), q(r['tagline']), q(r['tier']), q(r['category']),
             q(r['icon']), q(r['cs']), q(r['ce']), q(r['size']), q(r['speed']),
             str(r['fb']), str(r['ram']), str(r['ctx']), q(r['arch']), q(r['quant']),
-            q(r['repo']), q(r['hf_file']), q(r['url']), q(r['lic']), "'live'", '0',
+            q(r['repo']), q(r['hf_file']), q(r['url']), q(r['lic']), q(r['sha']), "'live'", '0',
         ])
-        + ');'
+        + ') ON CONFLICT(id) DO UPDATE SET '
+        + ','.join(f'{column}=excluded.{column}' for column in ['name','tagline','tier','category','icon_letter','color_start','color_end','size_label','speed_hint','file_bytes','min_ram_mb','ctx_default','arch','quant','hf_repo','hf_file','url','license','sha256'])
+        + ';'
     )
 
 io.open(OUT, 'w', encoding='utf-8').write('\n'.join(lines) + '\n')

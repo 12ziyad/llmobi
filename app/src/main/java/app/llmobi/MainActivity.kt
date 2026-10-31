@@ -24,8 +24,18 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermission()
         setContent {
             val state: AppState = viewModel()
+            androidx.compose.runtime.LaunchedEffect(intent) {
+                if (intent.getBooleanExtra("open_updates", false)) state.go(app.llmobi.ui.Screen.SETTINGS)
+            }
             Root(state)
         }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("open_updates", false))
+            androidx.lifecycle.ViewModelProvider(this)[AppState::class.java].go(app.llmobi.ui.Screen.SETTINGS)
     }
 
     /**

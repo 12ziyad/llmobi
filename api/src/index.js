@@ -9,11 +9,13 @@
  * a few dollars a month instead of tens of thousands.
  */
 
+import { RELEASE } from './release.js'
 import { download, admin, stats } from './admin.js'
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'access-control-allow-origin': '*',
+  'access-control-expose-headers': 'etag',
   'x-content-type-options': 'nosniff',
 }
 
@@ -29,7 +31,8 @@ export default {
       return new Response(null, {
         headers: {
           'access-control-allow-origin': '*',
-          'access-control-allow-methods': 'GET, OPTIONS',
+          'access-control-allow-methods': 'GET, HEAD, OPTIONS',
+          'access-control-allow-headers': 'If-None-Match',
           'access-control-max-age': '86400',
         },
       })
@@ -48,13 +51,15 @@ export default {
 
     try {
       if (path === '/' || path === '/v1') return json({ ok: true, service: 'llmobi-api', version: 1 })
+      if (path === '/v1/release') return json({ release: RELEASE })
       if (path === '/v1/catalog') return await catalog(request, env, ctx)
       if (path.startsWith('/v1/model/')) return await model(path.slice('/v1/model/'.length), env)
       if (path === '/v1/search') return await search(url, env)
       if (path === '/v1/health') return await health(env)
       return json({ error: 'not found' }, 404)
     } catch (err) {
-      return json({ error: 'internal', detail: String(err && err.message) }, 500)
+      console.error('request failed', { path, message: String(err?.message) })
+      return json({ error: 'temporarily unavailable' }, 503)
     }
   },
 
@@ -100,7 +105,7 @@ async function catalog(request, env, ctx) {
 
 async function model(id, env) {
   if (!/^[a-z0-9-]{1,64}$/.test(id)) return json({ error: 'bad id' }, 400)
-  const row = await env.DB.prepare('SELECT * FROM models WHERE id = ?').bind(id).first()
+  const row = await env.DB.prepare(`SELECT m.*, o.name AS o_name, o.tagline AS o_tagline, o.tier AS o_tier, o.category AS o_category FROM models m LEFT JOIN overrides o ON o.id = m.id WHERE m.id = ? AND m.status = 'live' AND COALESCE(o.hidden,0) = 0`).bind(id).first()
   if (!row) return json({ error: 'not found' }, 404)
   return json(shape(row))
 }
@@ -179,27 +184,32 @@ function shape(r) {
  */
 async function ingest(env) {
   const { results } = await env.DB.prepare(
-    "SELECT id, url, file_bytes FROM models WHERE status != 'hidden'"
+    "SELECT id, url, file_bytes, sha256 FROM models WHERE status != 'hidden'"
   ).all()
 
   for (const m of results || []) {
     try {
-      const head = await fetch(m.url, { method: 'HEAD', redirect: 'follow' })
-      if (!head.ok) {
+      const probe = await fetch(m.url, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(15000) })
+      const linkedBytes = Number(probe.headers.get('x-linked-size') || 0)
+      const linkedHash = (probe.headers.get('x-linked-etag') || '').replaceAll('"', '')
+      const knownFile = [301, 302, 307, 308].includes(probe.status) && linkedBytes > 0 && /^[a-f0-9]{64}$/i.test(linkedHash)
+      const head = !knownFile && probe.status >= 300 && probe.status < 400
+        ? await fetch(m.url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(15000) }) : probe
+      if (head.status === 404 || head.status === 410) {
         await env.DB.prepare("UPDATE models SET status='broken', updated_at=? WHERE id=?")
-          .bind(Date.now()).bind(m.id).run()
+          .bind(Date.now(), m.id).run()
         continue
       }
-      const len = Number(head.headers.get('content-length') || 0)
-      if (len > 0 && Math.abs(len - m.file_bytes) > 1024 * 1024) {
-        await env.DB.prepare(
-          "UPDATE models SET file_bytes=?, size_label=?, status='live', updated_at=? WHERE id=?"
-        ).bind(len, gbLabel(len), Date.now(), m.id).run()
-      } else {
-        await env.DB.prepare("UPDATE models SET status='live', updated_at=? WHERE id=?")
-          .bind(Date.now(), m.id).run()
-      }
-    } catch (_) {
+      if (!head.ok && !knownFile) continue
+      const len = knownFile ? linkedBytes : Number(head.headers.get('content-length') || 0)
+      const bytes = len > 0 ? len : m.file_bytes
+      const sha = /^[a-f0-9]{64}$/i.test(linkedHash) ? linkedHash.toLowerCase() : (bytes === m.file_bytes ? m.sha256 : '')
+      await env.DB.prepare(
+        "UPDATE models SET file_bytes=?, size_label=?, min_ram_mb=?, sha256=?, status='live', updated_at=? WHERE id=?"
+      ).bind(bytes, gbLabel(bytes), Math.ceil(bytes / 1048576 * 1.25 + 500), sha || '', Date.now(), m.id).run()
+
+    } catch (err) {
+      console.warn('catalog check failed', { id: m.id, message: String(err?.message) })
       // Leave the row alone: a transient upstream blip must not delist a model.
     }
   }

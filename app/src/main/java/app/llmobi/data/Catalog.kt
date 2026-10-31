@@ -61,7 +61,7 @@ object Catalog {
             // that trade is worth the small quality cost.
             arch = "qwen2", quant = "Q4_0",
             url = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_0.gguf",
-            sha256 = "", license = "apache-2.0",
+            sha256 = "7671c0c304e6ce5a7fc577bcb12aba01e2c155cc2efd29b2213c95b18edaf6ed", license = "apache-2.0",
         ),
         ModelEntry(
             id = "llama32-1b", name = "Llama 1B",
@@ -72,7 +72,7 @@ object Catalog {
             fileBytes = 1021800576L, minRamMb = 1719, ctxDefault = 4096,
             arch = "llama", quant = "Q6_K",
             url = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q6_K.gguf",
-            sha256 = "", license = "llama-3.2-community",
+            sha256 = "0f4c510daf16e0d1b3bc94931fd9296c28936bebdda2593687d4eb70c5b70628", license = "llama-3.2-community",
         ),
         ModelEntry(
             id = "gemma3-1b", name = "Gemma 1B",
@@ -83,7 +83,7 @@ object Catalog {
             fileBytes = 1011738880L, minRamMb = 1707, ctxDefault = 4096,
             arch = "gemma3", quant = "Q6_K",
             url = "https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF/resolve/main/google_gemma-3-1b-it-Q6_K.gguf",
-            sha256 = "", license = "gemma-terms",
+            sha256 = "ccad0cb14e9008f699f4b820110b899cf81983a987c40a05a8a1128d2fb713fb", license = "gemma-terms",
         ),
         ModelEntry(
             id = "qwen3-17b", name = "Qwen 1.7B",
@@ -94,7 +94,7 @@ object Catalog {
             fileBytes = 1471805856L, minRamMb = 2255, ctxDefault = 4096,
             arch = "qwen3", quant = "Q5_K_M",
             url = "https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q5_K_M.gguf",
-            sha256 = "", license = "apache-2.0",
+            sha256 = "4287aca1b231f27dbd20012c4bf9693c89b6c849dc02b7027096da54564d4037", license = "apache-2.0",
         ),
 
         // ---------------- FAST : 6-8 GB phones ----------------
@@ -107,7 +107,7 @@ object Catalog {
             fileBytes = 2019377696L, minRamMb = 2908, ctxDefault = 4096,
             arch = "llama", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
-            sha256 = "", license = "llama-3.2-community",
+            sha256 = "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff", license = "llama-3.2-community",
         ),
         ModelEntry(
             id = "phi4-mini", name = "Phi 3.8B",
@@ -118,7 +118,7 @@ object Catalog {
             fileBytes = 2491874688L, minRamMb = 3471, ctxDefault = 4096,
             arch = "phi3", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/microsoft_Phi-4-mini-instruct-GGUF/resolve/main/microsoft_Phi-4-mini-instruct-Q4_K_M.gguf",
-            sha256 = "", license = "mit",
+            sha256 = "01999f17c39cc3074afae5e9c539bc82d45f2dd7faa3917c66cbef76fce8c0c2", license = "mit",
         ),
         ModelEntry(
             id = "qwen3-4b", name = "Qwen 4B",
@@ -129,7 +129,7 @@ object Catalog {
             fileBytes = 2497280960L, minRamMb = 3477, ctxDefault = 4096,
             arch = "qwen3", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q4_K_M.gguf",
-            sha256 = "", license = "apache-2.0",
+            sha256 = "fbe1d5edd4ce802ae3ae7c7e4ab7d09789d697fdac1fc7929f8df4ca3c41bae3", license = "apache-2.0",
         ),
         ModelEntry(
             id = "gemma3-4b", name = "Gemma 4B",
@@ -140,7 +140,7 @@ object Catalog {
             fileBytes = 2489758112L, minRamMb = 3469, ctxDefault = 4096,
             arch = "gemma3", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF/resolve/main/google_gemma-3-4b-it-Q4_K_M.gguf",
-            sha256 = "", license = "gemma-terms",
+            sha256 = "4996030242583a40aa151ff93f49ed787ac8c25e4120c3ae4588b2e2a7d1ae94", license = "gemma-terms",
         ),
 
         // ---------------- POWERFUL : 12 GB phones ----------------
@@ -153,7 +153,7 @@ object Catalog {
             fileBytes = 4372812000L, minRamMb = 5713, ctxDefault = 4096,
             arch = "llama", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
-            sha256 = "", license = "apache-2.0",
+            sha256 = "1270d22c0fbb3d092fb725d4d96c457b7b687a5f5a715abe1e818da303e562b6", license = "apache-2.0",
         ),
         ModelEntry(
             id = "deepseek-r1-7b", name = "DeepSeek 7B",
@@ -164,7 +164,7 @@ object Catalog {
             fileBytes = 4683073504L, minRamMb = 6083, ctxDefault = 4096,
             arch = "qwen2", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
-            sha256 = "", license = "mit",
+            sha256 = "731ece8d06dc7eda6f6572997feb9ee1258db0784827e642909d9b565641937b", license = "mit",
         ),
         ModelEntry(
             id = "qwen25-coder-7b", name = "Qwen Coder 7B",
@@ -175,7 +175,7 @@ object Catalog {
             fileBytes = 4683074336L, minRamMb = 6083, ctxDefault = 8192,
             arch = "qwen2", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
-            sha256 = "", license = "apache-2.0",
+            sha256 = "1664fccab734674a50763490a8c6931b70e3f2f8ec10031b54806d30e5f956b6", license = "apache-2.0",
         ),
         ModelEntry(
             id = "llama31-8b", name = "Llama 8B",
@@ -186,7 +186,7 @@ object Catalog {
             fileBytes = 4920739232L, minRamMb = 6366, ctxDefault = 4096,
             arch = "llama", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
-            sha256 = "", license = "llama-3.1-community",
+            sha256 = "7b064f5842bf9532c91456deda288a1b672397a54fa729aa665952863033557c", license = "llama-3.1-community",
         ),
         ModelEntry(
             id = "qwen3-8b", name = "Qwen 8B",
@@ -197,7 +197,7 @@ object Catalog {
             fileBytes = 5027784224L, minRamMb = 6494, ctxDefault = 4096,
             arch = "qwen3", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/Qwen_Qwen3-8B-GGUF/resolve/main/Qwen_Qwen3-8B-Q4_K_M.gguf",
-            sha256 = "", license = "apache-2.0",
+            sha256 = "54fffa050078e984116639c83dfb64b5aa6d4cd474e018b076777c632bbccccd", license = "apache-2.0",
         ),
 
         // ---------------- PRO : 16 GB flagships ----------------
@@ -210,7 +210,7 @@ object Catalog {
             fileBytes = 7300575264L, minRamMb = 9203, ctxDefault = 4096,
             arch = "gemma3", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF/resolve/main/google_gemma-3-12b-it-Q4_K_M.gguf",
-            sha256 = "", license = "gemma-terms",
+            sha256 = "fc57f67efa46d711c346e587cbef7d049e95f3df8db2eb2271153343ef0acc7b", license = "gemma-terms",
         ),
         ModelEntry(
             id = "qwen3-14b", name = "Qwen 14B",
@@ -221,7 +221,7 @@ object Catalog {
             fileBytes = 9001753632L, minRamMb = 11231, ctxDefault = 4096,
             arch = "qwen3", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/Qwen_Qwen3-14B-GGUF/resolve/main/Qwen_Qwen3-14B-Q4_K_M.gguf",
-            sha256 = "", license = "apache-2.0",
+            sha256 = "915913e22399475dbe6c968ac014d9f1fbe08975e489279aede9d5c7b2c98eb6", license = "apache-2.0",
         ),
         ModelEntry(
             id = "deepseek-r1-14b", name = "DeepSeek 14B",
@@ -232,7 +232,7 @@ object Catalog {
             fileBytes = 8988110240L, minRamMb = 11215, ctxDefault = 4096,
             arch = "qwen2", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
-            sha256 = "", license = "mit",
+            sha256 = "0b319bd0572f2730bfe11cc751defe82045fad5085b4e60591ac2cd2d9633181", license = "mit",
         ),
         ModelEntry(
             id = "phi4-14b", name = "Phi 14B",
@@ -243,7 +243,7 @@ object Catalog {
             fileBytes = 9053114816L, minRamMb = 11293, ctxDefault = 4096,
             arch = "phi3", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/phi-4-GGUF/resolve/main/phi-4-Q4_K_M.gguf",
-            sha256 = "", license = "mit",
+            sha256 = "009aba717c09d4a35890c7d35eb59d54e1dba884c7c526e7197d9c13ab5911d9", license = "mit",
         ),
 
         // ---------------- EXTREME : experimental ----------------
@@ -256,7 +256,7 @@ object Catalog {
             fileBytes = 12109566624L, minRamMb = 14936, ctxDefault = 4096,
             arch = "gptoss", quant = "Q4",
             url = "https://huggingface.co/ggml-org/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-MXFP4.gguf",
-            sha256 = "", license = "apache-2.0",
+            sha256 = "27cd6c432c7672cb812a92f611cf3ba7bbc35928262bb1e1253ff4ee6ae35901", license = "apache-2.0",
         ),
         ModelEntry(
             id = "gemma3-27b", name = "Gemma 27B",
@@ -267,7 +267,7 @@ object Catalog {
             fileBytes = 16546404992L, minRamMb = 20225, ctxDefault = 4096,
             arch = "gemma3", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/google_gemma-3-27b-it-GGUF/resolve/main/google_gemma-3-27b-it-Q4_K_M.gguf",
-            sha256 = "", license = "gemma-terms",
+            sha256 = "4e83142e3ad3719ac61334f70a956dcc60bbba8adb29de5114161310bb9f7170", license = "gemma-terms",
         ),
         ModelEntry(
             id = "qwen3-32b", name = "Qwen 32B",
@@ -278,7 +278,7 @@ object Catalog {
             fileBytes = 19762149696L, minRamMb = 24059, ctxDefault = 4096,
             arch = "qwen3", quant = "Q4_K_M",
             url = "https://huggingface.co/bartowski/Qwen_Qwen3-32B-GGUF/resolve/main/Qwen_Qwen3-32B-Q4_K_M.gguf",
-            sha256 = "", license = "apache-2.0",
+            sha256 = "e41ec56ddd376963a116da97506fadfccb50fb402bb6f3cb4be0bc179a582bd6", license = "apache-2.0",
         ),
     )
 
