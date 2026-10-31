@@ -32,7 +32,7 @@ export async function download(request, env, ctx) {
   const country = request.headers.get('cf-ipcountry') || null
   const android = androidVersion(ua)
 
-  ctx.waitUntil(
+  if (request.method === 'GET') ctx.waitUntil(
     env.DB.prepare(
       'INSERT INTO downloads (at, day, country, android, platform) VALUES (?, ?, ?, ?, ?)'
     )

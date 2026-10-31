@@ -56,10 +56,8 @@ private fun Scrim(onDismiss: () -> Unit, content: @Composable () -> Unit) {
  * Shown before any install. Says plainly what the model needs and what the phone
  * has, then lets the person decide.
  *
- * Deliberately never blocks. Telling somebody "this will not work on your phone"
- * and removing the button is both patronising and sometimes wrong - free memory
- * moves around, and closing a few apps can change the answer. Show the numbers,
- * give an honest warning, and leave the choice with them.
+ * Storage and processor requirements are enforced. RAM is an estimate, so show
+ * the current figures and check again when loading before allocating the model.
  */
 @Composable
 fun InstallSheet(
@@ -71,7 +69,7 @@ fun InstallSheet(
     val skin = LocalSkin.current
 
     val needRamMb = model.minRamMb
-    val haveRamMb = device.availableRamMb + (device.totalRamMb - device.availableRamMb) / 5
+    val haveRamMb = device.usableRamMb
     val ramOk = haveRamMb >= needRamMb
 
     val needStoreMb = model.fileBytes / 1_048_576L
@@ -132,10 +130,6 @@ fun InstallSheet(
                     }
                 }
             } else {
-                // A warning, not a verdict. The memory figure is an estimate and
-                // phones under-report what they can free, so "won't run" was
-                // wrong often enough to be dishonest. Say what we know and let
-                // them try.
                 Column(
                     Modifier
                         .fillMaxWidth()
@@ -152,16 +146,16 @@ fun InstallSheet(
                         if (!storeOk)
                             "Free up some space first, or the download will not finish."
                         else
-                            "Your phone has less free memory than this model usually wants. " +
-                                "It might still work - many do. If it is very slow or stops, " +
-                                "close other apps, or a smaller AI will fly.",
+                            "Your phone has less usable memory than this model needs. " +
+                                "Close other apps or choose a smaller AI. We check memory " +
+                                "again before loading and stop if there is too little.",
                         color = skin.grey, fontSize = 12.5.sp, lineHeight = 18.sp,
                     )
                 }
             }
 
             Spacer(Modifier.height(18.dp))
-            BigButton(
+            if (storeOk && device.supported) BigButton(
                 if (allGood || !storeOk) "Install · ${model.sizeLabel}" else "Try it anyway · ${model.sizeLabel}",
                 danger = !allGood,
                 onClick = onInstall,

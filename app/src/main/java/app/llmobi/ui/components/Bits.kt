@@ -129,8 +129,9 @@ fun FitChip(fit: Fit) {
         Fit.EXCELLENT -> Triple(skin.green.copy(alpha = 0.16f), skin.green, "EXCELLENT")
         Fit.RECOMMENDED -> Triple(skin.green.copy(alpha = 0.16f), skin.green, "RECOMMENDED")
         Fit.HEAVY -> Triple(skin.amber.copy(alpha = 0.16f), skin.amber, "HEAVY")
-        Fit.WONT_RUN -> Triple(skin.red.copy(alpha = 0.15f), skin.red, "WON'T RUN")
+        Fit.WONT_RUN -> Triple(skin.red.copy(alpha = 0.15f), skin.red, "TOO HEAVY")
         Fit.NO_SPACE -> Triple(skin.red.copy(alpha = 0.15f), skin.red, "NO SPACE")
+        Fit.UNSUPPORTED -> Triple(skin.red.copy(alpha = 0.15f), skin.red, "UNSUPPORTED")
     }
     Box(
         Modifier

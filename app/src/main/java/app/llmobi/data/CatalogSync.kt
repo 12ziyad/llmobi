@@ -2,6 +2,10 @@ package app.llmobi.data
 
 import android.content.Context
 import android.util.Log
+import android.util.AtomicFile
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -24,6 +28,7 @@ import java.util.concurrent.TimeUnit
  */
 object CatalogSync {
 
+    private val refreshLock = Mutex()
     private const val TAG = "CatalogSync"
     private const val ENDPOINT = "https://llmobi-api.gpmai.workers.dev/v1/catalog"
     private const val CACHE_FILE = "catalog.json"
@@ -39,8 +44,8 @@ object CatalogSync {
     /** Cached list if we have one, otherwise the list compiled into the app. */
     fun load(ctx: Context): List<ModelEntry> {
         val f = File(ctx.filesDir, CACHE_FILE)
-        if (!f.exists()) return Catalog.models
-        return runCatching { parse(f.readText()) }
+        if (!f.exists() && !File(f.path + ".bak").exists()) return Catalog.models
+        return runCatching { parse(AtomicFile(f).openRead().bufferedReader().use { it.readText() }) }
             .onFailure { Log.w(TAG, "cached catalog unreadable, using bundled: ${it.message}") }
             .getOrNull()
             ?.takeIf { it.isNotEmpty() }
@@ -51,21 +56,22 @@ object CatalogSync {
      * Refreshes in the background. Returns true only when the list actually
      * changed, so callers know whether it is worth redrawing.
      */
-    suspend fun refresh(ctx: Context, force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+    suspend fun refresh(ctx: Context, force: Boolean = false): Boolean = refreshLock.withLock { withContext(Dispatchers.IO) {
         val prefs = ctx.getSharedPreferences("llmobi", Context.MODE_PRIVATE)
         val since = System.currentTimeMillis() - prefs.getLong(CHECKED_KEY, 0)
-        if (!force && since < MIN_INTERVAL_MS) return@withContext false
+        if (!force && since in 0 until MIN_INTERVAL_MS) return@withContext false
 
         try {
-            val etag = prefs.getString(ETAG_KEY, null)
+            val cached = runCatching { parse(AtomicFile(File(ctx.filesDir, CACHE_FILE)).openRead().bufferedReader().use { it.readText() }) }.getOrNull()
+            val etag = if (!cached.isNullOrEmpty()) prefs.getString(ETAG_KEY, null) else null
             val req = Request.Builder().url(ENDPOINT)
                 .apply { if (etag != null) header("If-None-Match", etag) }
                 .build()
 
             client.newCall(req).execute().use { resp ->
-                prefs.edit().putLong(CHECKED_KEY, System.currentTimeMillis()).apply()
 
                 if (resp.code == 304) {
+                    prefs.edit().putLong(CHECKED_KEY, System.currentTimeMillis()).apply()
                     Log.i(TAG, "catalog unchanged")
                     return@withContext false
                 }
@@ -74,7 +80,19 @@ object CatalogSync {
                     return@withContext false
                 }
 
-                val body = resp.body?.string().orEmpty()
+                val input = resp.body?.byteStream() ?: return@withContext false
+                val bytes = input.use { stream ->
+                    val out = java.io.ByteArrayOutputStream()
+                    val buf = ByteArray(8192)
+                    while (true) {
+                        val n = stream.read(buf)
+                        if (n < 0) break
+                        require(out.size() + n <= 1_048_576) { "Catalog too large" }
+                        out.write(buf, 0, n)
+                    }
+                    out.toByteArray()
+                }
+                val body = bytes.toString(Charsets.UTF_8)
                 // Parse before writing: a half-valid file cached to disk would
                 // break the store on every launch until the next refresh.
                 val parsed = parse(body)
@@ -83,62 +101,44 @@ object CatalogSync {
                     return@withContext false
                 }
 
-                File(ctx.filesDir, CACHE_FILE).writeText(body)
-                resp.header("ETag")?.let { prefs.edit().putString(ETAG_KEY, it).apply() }
+                writeAtomic(File(ctx.filesDir, CACHE_FILE), body)
+                prefs.edit().putLong(CHECKED_KEY, System.currentTimeMillis())
+                    .putString(ETAG_KEY, resp.header("ETag")).apply()
                 Log.i(TAG, "catalog updated: ${parsed.size} models")
                 return@withContext true
             }
-        } catch (t: Throwable) {
+        } catch (t: CancellationException) {
+            throw t
+        } catch (t: Exception) {
             Log.w(TAG, "catalog refresh skipped: ${t.message}")
             return@withContext false
         }
+    } }
+
+    private fun parse(json: String) = CatalogCodec.parse(json).map { model ->
+        val bundled = Catalog.byId(model.id)
+        if (model.sha256.isBlank() && bundled != null && bundled.url == model.url && bundled.fileBytes == model.fileBytes)
+            model.copy(sha256 = bundled.sha256) else model
     }
 
-    private fun parse(json: String): List<ModelEntry> {
-        val root = JSONObject(json)
-        val arr: JSONArray = root.optJSONArray("models") ?: return emptyList()
-        val out = ArrayList<ModelEntry>(arr.length())
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            val id = o.optString("id")
-            val url = o.optString("url")
-            // A record without an id or a download link is unusable; skip it
-            // rather than letting one bad row take the whole catalog down.
-            if (id.isBlank() || url.isBlank()) continue
-            out += ModelEntry(
-                id = id,
-                name = o.optString("name", id),
-                tagline = o.optString("tagline", ""),
-                tier = tierOf(o.optString("tier")),
-                category = o.optString("category", "general"),
-                iconLetter = o.optString("iconLetter", id.take(1).uppercase()),
-                colorStart = colorOf(o.optString("colorStart"), 0xFF7BD4F5),
-                colorEnd = colorOf(o.optString("colorEnd"), 0xFF3C8FD0),
-                sizeLabel = o.optString("sizeLabel", ""),
-                speedHint = o.optString("speedHint", "steady"),
-                fileBytes = o.optLong("fileBytes", 0L),
-                minRamMb = o.optInt("minRamMb", 2000),
-                ctxDefault = o.optInt("ctxDefault", 4096),
-                arch = o.optString("arch", ""),
-                quant = o.optString("quant", ""),
-                url = url,
-                sha256 = o.optString("sha256", ""),
-                license = o.optString("license", ""),
-            )
-        }
-        return out
+    @Synchronized
+    fun remembered(ctx: Context): List<ModelEntry> = runCatching {
+        parse(AtomicFile(File(ctx.filesDir, "installed-catalog.json")).openRead().bufferedReader().use { it.readText() })
+    }.getOrDefault(emptyList())
+
+    fun find(ctx: Context, id: String): ModelEntry? =
+        remembered(ctx).firstOrNull { it.id == id } ?: load(ctx).firstOrNull { it.id == id } ?: Catalog.byId(id)
+
+    @Synchronized
+    fun remember(ctx: Context, model: ModelEntry) {
+        writeAtomic(File(ctx.filesDir, "installed-catalog.json"),
+            CatalogCodec.encode(remembered(ctx).filterNot { it.id == model.id } + model))
     }
 
-    private fun tierOf(s: String): Tier = when (s.lowercase()) {
-        "tiny" -> Tier.TINY
-        "fast" -> Tier.FAST
-        "powerful" -> Tier.POWERFUL
-        "pro" -> Tier.PRO
-        "extreme" -> Tier.EXTREME
-        else -> Tier.FAST
+    private fun writeAtomic(file: File, body: String) {
+        val atomic = AtomicFile(file)
+        val stream = atomic.startWrite()
+        try { stream.write(body.toByteArray(Charsets.UTF_8)); atomic.finishWrite(stream) }
+        catch (t: Throwable) { atomic.failWrite(stream); throw t }
     }
-
-    /** "#7BD4F5" -> 0xFF7BD4F5. Falls back rather than throwing on junk. */
-    private fun colorOf(s: String, fallback: Long): Long =
-        runCatching { 0xFF000000L or s.removePrefix("#").toLong(16) }.getOrDefault(fallback)
 }

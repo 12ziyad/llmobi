@@ -24,7 +24,9 @@ class ChatActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val state: AppState = viewModel()
-            modelIdFrom(intent)?.let { state.selectModel(it) }
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                modelIdFrom(intent)?.let { state.selectModel(it) }
+            }
             Root(state)
         }
     }
@@ -32,15 +34,18 @@ class ChatActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        modelIdFrom(intent)?.let { androidx.lifecycle.ViewModelProvider(this)[AppState::class.java].selectModel(it) }
     }
 
     private fun modelIdFrom(intent: Intent?): String? {
         val fromExtra = intent?.getStringExtra("model_id")
-        if (fromExtra != null && Catalog.byId(fromExtra) != null) return fromExtra
+        if (fromExtra != null && app.llmobi.data.CatalogSync.find(this, fromExtra) != null) return fromExtra
 
         // llmobi://chat/model/<id>
-        val segs = intent?.data?.pathSegments ?: return null
+        val uri = intent?.data ?: return null
+        if (uri.scheme != "llmobi" || uri.host != "chat") return null
+        val segs = uri.pathSegments
         val id = segs.lastOrNull() ?: return null
-        return if (Catalog.byId(id) != null) id else null
+        return if (app.llmobi.data.CatalogSync.find(this, id) != null) id else null
     }
 }

@@ -29,11 +29,16 @@ import app.llmobi.engine.Turn
 import app.llmobi.perf.Perf
 import app.llmobi.perf.Run
 import app.llmobi.safety.Safety
+import app.llmobi.update.AppUpdates
+import app.llmobi.update.AppUpdateWorker
+import app.llmobi.update.UpdateInfo
+import app.llmobi.update.RefreshWorker
 import app.llmobi.ui.theme.ThemeChoice
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 enum class Screen { CHAT, STORE, MY_AIS, SETTINGS, APPEARANCE, STORAGE, MODEL_SETTINGS, PERFORMANCE }
@@ -48,7 +53,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
     var screen by mutableStateOf(Screen.CHAT)
         private set
     var drawerOpen by mutableStateOf(false)
-    var theme by mutableStateOf(ThemeChoice.valueOf(prefs.getString("theme", "DARK")!!))
+    var theme by mutableStateOf(runCatching { ThemeChoice.valueOf(prefs.getString("theme", "DARK")!!) }.getOrDefault(ThemeChoice.DARK))
         private set
     var wifiOnly by mutableStateOf(prefs.getBoolean("wifi_only", true))
         private set
@@ -68,7 +73,10 @@ class AppState(app: Application) : AndroidViewModel(app) {
     // ---- model + chat state
     var modelId by mutableStateOf(prefs.getString("last_model", null))
         private set
-    val model: ModelEntry? get() = modelId?.let { id -> catalog.firstOrNull { it.id == id } ?: Catalog.byId(id) }
+    fun findModel(id: String): ModelEntry? = rememberedModels.firstOrNull { it.id == id && isInstalled(id) }
+        ?: catalog.firstOrNull { it.id == id } ?: rememberedModels.firstOrNull { it.id == id } ?: Catalog.byId(id)
+    private var rememberedModels = CatalogSync.remembered(ctx)
+    val model: ModelEntry? get() = modelId?.let { findModel(it) }
 
     var installed = mutableStateListOf<Installed>()
         private set
@@ -94,22 +102,40 @@ class AppState(app: Application) : AndroidViewModel(app) {
     /** modelId -> percent, for every download currently running. Drives the top-bar ring. */
     val activeDownloads = mutableStateMapOf<String, Int>()
 
+    var availableUpdate by mutableStateOf(AppUpdates.cached(ctx))
+        private set
+    var updateProgress by mutableStateOf<Int?>(null)
+        private set
+    var updateReady by mutableStateOf(false)
+        private set
+    var updateMessage by mutableStateOf<String?>(null)
+        private set
+    private var refreshJob: Job? = null
+    private val observedDownloads = mutableSetOf<String>()
+    val downloadErrors = mutableStateMapOf<String, String>()
     private var genJob: Job? = null
     private var streamingMessageId: Long? = null
 
     init {
         refresh()
+        RefreshWorker.schedule(ctx)
+        viewModelScope.launch {
+            WorkManager.getInstance(ctx).getWorkInfosForUniqueWorkFlow(RefreshWorker.NOW).collect { infos ->
+                if (infos.any { it.state == WorkInfo.State.SUCCEEDED }) reloadOnlineData()
+            }
+        }
+        viewModelScope.launch {
+            WorkManager.getInstance(ctx).getWorkInfosForUniqueWorkFlow(AppUpdateWorker.NAME).collect { infos ->
+                val info = AppUpdateWorker.currentInfo(ctx, infos)
+                updateProgress = if (info != null && !info.state.isFinished) info.progress.getInt("percent", 0) else null
+                if (info?.state == WorkInfo.State.FAILED) updateMessage = info.outputData.getString("error")
+                availableUpdate?.let { updateReady = AppUpdates.isReady(ctx, it) }
+            }
+        }
         // A download may already be running from a previous launch - reattach to
         // every model so its completion still lands in the UI.
         catalog.forEach { observeDownload(it.id) }
-        // Fire and forget: the store is already usable from the cached list, so
-        // a slow or absent network only ever means slightly stale entries.
-        viewModelScope.launch {
-            if (CatalogSync.refresh(ctx)) {
-                catalog = CatalogSync.load(ctx)
-                refresh()
-            }
-        }
+        onForeground()
         // If nothing was ever chosen, land on the smallest thing this phone can run.
         if (modelId == null) {
             val best = DeviceProfiler.rank(catalog, device)
@@ -118,13 +144,70 @@ class AppState(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun reloadOnlineData() {
+        catalog = CatalogSync.load(ctx)
+        catalog.forEach { observeDownload(it.id) }
+        availableUpdate = AppUpdates.cached(ctx)
+        updateReady = availableUpdate?.let { AppUpdates.isReady(ctx, it) } ?: false
+        refresh()
+    }
+
+    fun onForeground(force: Boolean = false) {
+        reloadOnlineData()
+        RefreshWorker.request(ctx, force)
+        if (refreshJob?.isActive == true) return
+        refreshJob = viewModelScope.launch {
+            try {
+                CatalogSync.refresh(ctx, force)
+                AppUpdates.check(ctx, force)
+                if (force) updateMessage = "Checked for updates."
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { if (force) updateMessage = "Could not check online. Your installed models still work offline." }
+            finally { reloadOnlineData() }
+        }
+    }
+
+    fun downloadUpdate() {
+        val info = availableUpdate ?: return
+        updateMessage = null
+        updateProgress = 0
+        viewModelScope.launch {
+            try { AppUpdateWorker.start(ctx, info) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { updateProgress = null; updateMessage = "Could not start the update. Try again." }
+        }
+    }
+
+    fun cancelUpdate() {
+        WorkManager.getInstance(ctx).cancelUniqueWork(AppUpdateWorker.NAME)
+        updateProgress = null
+        updateMessage = "Update download stopped. Tap Download to resume."
+    }
+
+    fun installUpdate() {
+        val info = availableUpdate ?: return
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { AppUpdates.verifyPackage(ctx, info, AppUpdates.file(ctx, info)) }
+                if (!AppUpdates.openInstaller(ctx, info))
+                    updateMessage = "Allow updates from LLMobi in Android settings, return here, then tap Install update."
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { updateReady = false; updateMessage = e.message ?: "Could not open the Android installer." }
+        }
+    }
+
     // ---------------------------------------------------------------- data
 
     fun refresh() {
+        rememberedModels = CatalogSync.remembered(ctx)
         device = DeviceProfiler.read(ctx)
         adoptOrphans()
         installed.clear()
-        installed.addAll(store.installed())
+        for (entry in store.installed()) {
+            val file = File(entry.path)
+            if (file.exists() && file.length() == entry.bytes && Safety.looksLikeGguf(file)) installed.add(entry)
+            else store.uninstall(entry.modelId, false) // Restored history can outlive the model weights.
+        }
         modelId?.let { reloadChats(it) }
     }
 
@@ -141,7 +224,8 @@ class AppState(app: Application) : AndroidViewModel(app) {
         for (f in files) {
             if (!f.name.endsWith(".gguf") || f.length() < 1_000_000L) continue
             val id = f.name.removeSuffix(".gguf")
-            if (Catalog.byId(id) == null) continue
+            val entry = findModel(id) ?: continue
+            if (f.length() != entry.fileBytes || !Safety.looksLikeGguf(f)) continue
             if (store.isInstalled(id)) continue
             store.markInstalled(id, f.absolutePath, f.length())
         }
@@ -154,9 +238,9 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     fun isInstalled(id: String) = installed.any { it.modelId == id }
 
-    fun fitOf(m: ModelEntry): Fit = DeviceProfiler.fit(m, device)
+    fun fitOf(m: ModelEntry): Fit = DeviceProfiler.fit(m, device, isInstalled(m.id))
 
-    fun ranked(): List<Pair<ModelEntry, Fit>> = DeviceProfiler.rank(catalog, device)
+    fun ranked(): List<Pair<ModelEntry, Fit>> = DeviceProfiler.rank(catalog, device, installed.map { it.modelId }.toSet())
 
     fun settingsFor(id: String): ModelSettings = store.settings(id)
 
@@ -169,6 +253,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
     // ---------------------------------------------------------------- nav
 
     fun go(s: Screen) {
+        if (s == Screen.STORE || s == Screen.STORAGE) refresh()
         screen = s
         drawerOpen = false
     }
@@ -264,6 +349,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         }
 
         genJob = viewModelScope.launch {
+            try {
             val sentAt = System.currentTimeMillis()
             Perf.startLive()
 
@@ -298,8 +384,8 @@ class AppState(app: Application) : AndroidViewModel(app) {
             }
 
             device = DeviceProfiler.read(ctx)
-            val usableMb = device.availableRamMb + (device.totalRamMb - device.availableRamMb) / 5
-            val plan = Safety.planLoad(usableMb, m.minRamMb, ctxSize)
+            val usableMb = device.usableRamMb
+            val plan = if (alreadyUp) Safety.Plan(true, ctxSize, null) else Safety.planLoad(usableMb, m.minRamMb, ctxSize)
             if (!plan.ok) {
                 Perf.endLive()
                 finishStream(aiId, plan.reason ?: "Not enough free memory right now.")
@@ -361,10 +447,10 @@ class AppState(app: Application) : AndroidViewModel(app) {
                         Perf.tickLive(tokens, firstWordAt - sentAt)
                     }
                 }
-            } catch (_: Throwable) {
-                // Falls through to whatever was produced before the failure.
-            }
-            watchdog.cancel()
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) {
+                engineNote = "The reply stopped unexpectedly. You can try again or choose a smaller model."
+            } finally { watchdog.cancel() }
             if (stalled) {
                 Perf.endLive()
                 finishStream(
@@ -392,7 +478,19 @@ class AppState(app: Application) : AndroidViewModel(app) {
                     )
                 )
             }
-            finishStream(aiId, sb.toString().ifBlank { "(no reply)" })
+            finishStream(aiId, sb.toString().ifBlank { "This model could not produce a reply. Try a shorter message or choose a smaller AI." })
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) {
+                if (streamingMessageId == aiId) finishStream(aiId, "The model stopped unexpectedly. Try again or choose a smaller AI.")
+            } finally {
+                if (Safety.crashedOn(ctx) == m.id) Safety.cancelLoad(ctx, m.id)
+                if (streamingMessageId == aiId) {
+                    loadingModel = false
+                    generating = false
+                    streamingMessageId = null
+                    Perf.endLive()
+                }
+            }
         }
     }
 
@@ -489,6 +587,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     private fun finishStream(aiId: Long, finalText: String) {
         store.updateMessage(aiId, finalText)
+        if (streamingMessageId != aiId) return
         val idx = messages.indexOfFirst { it.id == aiId }
         if (idx >= 0) messages[idx] = messages[idx].copy(text = finalText)
         generating = false
@@ -511,6 +610,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         }
         generating = false
         streamingMessageId = null
+        Perf.endLive()
     }
 
     // ---------------------------------------------------------------- install
@@ -518,6 +618,10 @@ class AppState(app: Application) : AndroidViewModel(app) {
     /** Opens the requirements sheet. Nothing downloads until they confirm. */
     fun askInstall(m: ModelEntry) {
         device = DeviceProfiler.read(ctx)
+        if (!device.supported) {
+            toast = "This phone cannot run this version of the AI engine. A 64-bit ARM processor with dot-product and half-precision support is required."
+            return
+        }
         pendingInstall = m
         drawerOpen = false
     }
@@ -529,9 +633,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
     fun confirmInstall() {
         val m = pendingInstall ?: return
         pendingInstall = null
-        ModelDownloadWorker.start(ctx, m.id, wifiOnly)
-        observeDownload(m.id)
-        toast = "Installing ${m.name} - keep going in the background"
+        install(m)
     }
 
     /**
@@ -543,17 +645,20 @@ class AppState(app: Application) : AndroidViewModel(app) {
      * WorkInfo is what turns the file arriving into the button changing.
      */
     private fun observeDownload(modelId: String) {
+        if (!observedDownloads.add(modelId)) return
         viewModelScope.launch {
             WorkManager.getInstance(ctx)
                 .getWorkInfosForUniqueWorkFlow(ModelDownloadWorker.tagFor(modelId))
                 .collect { infos ->
-                    val info = infos.firstOrNull() ?: return@collect
+                    val info = ModelDownloadWorker.currentInfo(ctx, modelId, infos) ?: return@collect
                     when (info.state) {
                         WorkInfo.State.RUNNING, WorkInfo.State.ENQUEUED -> {
+                            downloadErrors.remove(modelId)
                             activeDownloads[modelId] =
                                 info.progress.getInt(ModelDownloadWorker.KEY_PROGRESS, 0)
                         }
                         WorkInfo.State.SUCCEEDED -> {
+                            downloadErrors.remove(modelId)
                             activeDownloads.remove(modelId)
                             refresh()
                             val name = catalog.firstOrNull { it.id == modelId }?.name ?: modelId
@@ -562,8 +667,10 @@ class AppState(app: Application) : AndroidViewModel(app) {
                         WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
                             activeDownloads.remove(modelId)
                             refresh()
-                            toast = info.outputData.getString(ModelDownloadWorker.KEY_ERROR)
-                                ?: "The download stopped. Tap install to try again."
+                            val message = info.outputData.getString(ModelDownloadWorker.KEY_ERROR)
+                                ?: "The download stopped. Tap install to resume."
+                            downloadErrors[modelId] = message
+                            toast = message
                         }
                         else -> Unit
                     }
@@ -572,8 +679,15 @@ class AppState(app: Application) : AndroidViewModel(app) {
     }
 
     fun install(m: ModelEntry) {
-        ModelDownloadWorker.start(ctx, m.id, wifiOnly)
-        toast = "Installing ${m.name}"
+        device = DeviceProfiler.read(ctx)
+        if (!device.supported) { toast = "This phone does not support the AI engine."; return }
+        downloadErrors.remove(m.id)
+        observeDownload(m.id)
+        viewModelScope.launch {
+            try { ModelDownloadWorker.start(ctx, m.id, wifiOnly); toast = if (wifiOnly) "Installing ${m.name} · waiting for Wi-Fi if needed" else "Installing ${m.name}" }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { toast = "Could not start the download. Please try again." }
+        }
     }
 
     fun cancelInstall(m: ModelEntry) {
@@ -581,13 +695,23 @@ class AppState(app: Application) : AndroidViewModel(app) {
     }
 
     fun uninstall(id: String, alsoChats: Boolean) {
+        if (generating && modelId == id) stopGeneration()
         if (Engines.currentModelId == id) Engines.release()
-        ModelDownloadWorker.fileFor(ctx, id).delete()
-        File(ModelDownloadWorker.fileFor(ctx, id).absolutePath + ".part").delete()
-        store.uninstall(id, alsoChats)
-        app.llmobi.shortcut.Shortcuts.remove(ctx, id)
-        refresh()
-        toast = "Removed"
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                WorkManager.getInstance(ctx).cancelUniqueWork(ModelDownloadWorker.tagFor(id)).result.get()
+                ModelDownloadWorker.fileLock(id).withLock {
+                    val target = ModelDownloadWorker.fileFor(ctx, id)
+                    target.delete()
+                    app.llmobi.download.ResumableDownload.partFor(target).delete()
+                    app.llmobi.download.ResumableDownload.metaFor(target).delete()
+                    store.uninstall(id, alsoChats)
+                }
+            }
+            app.llmobi.shortcut.Shortcuts.remove(ctx, id)
+            refresh()
+            toast = "Removed"
+        }
     }
 
     // ---------------------------------------------------------------- prefs

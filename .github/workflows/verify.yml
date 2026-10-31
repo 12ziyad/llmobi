@@ -1,0 +1,39 @@
+name: Verify LLMobi
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Restore pinned native source
+        shell: pwsh
+        run: ./tools/setup_native.ps1
+      - name: Android SDK components
+        shell: pwsh
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
+      - name: Android tests, lint and APK
+        shell: pwsh
+        run: ./gradlew.bat testDebugUnitTest lintDebug assembleDebug --max-workers=2 --console=plain
+      - name: API integration tests
+        working-directory: api
+        run: npm ci && npm test
+      - name: Website build and browser tests
+        working-directory: web
+        run: npm ci && npm run build && npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-results
+          path: |
+            app/build/reports/
+            app/build/outputs/apk/debug/
+            web/test-results/

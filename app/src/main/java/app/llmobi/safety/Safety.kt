@@ -66,6 +66,10 @@ object Safety {
         Log.w(TAG, "previous launch died while loading $id (failure $n)")
     }
 
+    fun cancelLoad(ctx: Context, modelId: String) {
+        if (crashedOn(ctx) == modelId) prefs(ctx).edit().remove(KEY_LOADING).apply()
+    }
+
     fun failures(ctx: Context, modelId: String): Int = prefs(ctx).getInt(KEY_FAILS + modelId, 0)
 
     fun isBlocked(ctx: Context, modelId: String): Boolean = failures(ctx, modelId) >= MAX_FAILS
@@ -92,17 +96,10 @@ object Safety {
 
         if (headroom >= 0) return Plan(true, wantContext, null)
 
-        // Short: shrink the context and try anyway. This used to refuse when the
-        // gap was large, and that was the wrong call - the estimate is a guess,
-        // phones lie about free memory, and a person who tapped Install anyway
-        // has already been told the risk. Let them find out. If it really cannot
-        // fit, the load fails or the stall watchdog fires, and both explain why.
-        val ctx = if (wantContext > 1024) 1024 else wantContext
-        val note = if (headroom > -400)
-            "Running with a shorter memory to fit the space left."
-        else
-            "Memory is tight for this model - it may be slow or stop partway. " +
-                "Closing other apps helps."
+        if (availableMb < needMb * 0.85) return Plan(false, 1024,
+            "There is not enough available memory to load this model safely. Close other apps or choose a smaller AI.")
+        val ctx = wantContext.coerceAtMost(1024)
+        val note = "Running with a shorter conversation memory to leave room for your phone."
         return Plan(true, ctx, note)
     }
 

@@ -21,7 +21,10 @@ import app.llmobi.R
 import app.llmobi.data.Catalog
 import app.llmobi.data.Store
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -51,19 +54,32 @@ class ModelDownloadWorker(ctx: Context, params: androidx.work.WorkerParameters) 
 
         fun tagFor(modelId: String) = "download_$modelId"
 
-        fun start(ctx: Context, modelId: String, wifiOnly: Boolean) {
+        private val starts = Mutex()
+        private val fileLocks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
+        fun fileLock(id: String) = fileLocks.getOrPut(id) { Mutex() }
+        fun currentInfo(ctx: Context, id: String, infos: List<WorkInfo>): WorkInfo? {
+            val current = ctx.getSharedPreferences("llmobi", Context.MODE_PRIVATE).getString("work_$id", null)
+            return infos.firstOrNull { it.id.toString() == current }
+                ?: if (current == null) infos.firstOrNull { !it.state.isFinished } ?: infos.firstOrNull() else null
+        }
+        suspend fun start(ctx: Context, modelId: String, wifiOnly: Boolean) = withContext(Dispatchers.IO) { starts.withLock {
+            require(app.llmobi.data.CatalogCodec.validId(modelId))
+            val manager = WorkManager.getInstance(ctx)
+            if (manager.getWorkInfosForUniqueWork(tagFor(modelId)).get().any { !it.state.isFinished }) return@withLock
             val req = OneTimeWorkRequestBuilder<ModelDownloadWorker>()
                 .setInputData(workDataOf(KEY_MODEL_ID to modelId))
                 .addTag(tagFor(modelId))
+                .addTag("model_download")
+                .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 15, TimeUnit.SECONDS)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
                         .build()
                 )
                 .build()
-            WorkManager.getInstance(ctx)
-                .enqueueUniqueWork(tagFor(modelId), ExistingWorkPolicy.KEEP, req)
-        }
+            ctx.getSharedPreferences("llmobi", Context.MODE_PRIVATE).edit().putString("work_$modelId", req.id.toString()).commit()
+            manager.enqueueUniqueWork(tagFor(modelId), ExistingWorkPolicy.KEEP, req).result.get()
+        } }
 
         fun cancel(ctx: Context, modelId: String) {
             WorkManager.getInstance(ctx).cancelUniqueWork(tagFor(modelId))
@@ -76,140 +92,50 @@ class ModelDownloadWorker(ctx: Context, params: androidx.work.WorkerParameters) 
             File(ctx.filesDir, "models").apply { mkdirs() }
 
         fun fileFor(ctx: Context, modelId: String): File =
-            File(modelsDir(ctx), "$modelId.gguf")
+            File(modelsDir(ctx), "$modelId.gguf").also { require(app.llmobi.data.CatalogCodec.validId(modelId)) }
     }
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build()
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val modelId = inputData.getString(KEY_MODEL_ID) ?: return@withContext Result.failure()
-        val model = Catalog.byId(modelId) ?: return@withContext Result.failure()
-
-        val target = fileFor(applicationContext, modelId)
-        val part = File(target.absolutePath + ".part")
-
-        // Refuse early rather than filling the phone and failing at 97%.
-        val free = applicationContext.filesDir.usableSpace
-        if (free < model.fileBytes - part.length() + 256L * 1024 * 1024) {
-            return@withContext Result.failure(
-                workDataOf(KEY_ERROR to "Not enough space. Free up about ${model.sizeLabel} and try again.")
-            )
-        }
-
-        // Never fatal. setForeground needs POST_NOTIFICATIONS, which is a runtime
-        // grant on Android 13+; without it the foreground service cannot show its
-        // notification and the system kills the job a second or two in. A missing
-        // progress bar is a small loss. A download that dies silently is not.
-        runCatching { setForeground(notification(model.name, 0)) }
-            .onFailure { Log.w(TAG, "no foreground notification: ${it.message}") }
-
+        if (!app.llmobi.data.CatalogCodec.validId(modelId)) return@withContext Result.failure()
+        val lock = fileLock(modelId)
+        lock.lock()
         try {
-            var have = if (part.exists()) part.length() else 0L
-
-            val req = Request.Builder()
-                .url(model.url)
-                .apply { if (have > 0) header("Range", "bytes=$have-") }
-                .build()
-
-            Log.i(TAG, "GET ${model.url} (resume from $have)")
-
-            client.newCall(req).execute().use { resp ->
-                Log.i(TAG, "HTTP ${resp.code} ${resp.message} len=${resp.body?.contentLength()}")
-                if (resp.code == 416) {
-                    // Server says we already have the whole thing.
-                    have = part.length()
-                } else if (!resp.isSuccessful) {
-                    Log.e(TAG, "download failed: HTTP ${resp.code}")
-                    return@withContext Result.retry()
-                }
-
-                // A 200 to a ranged request means the server ignored it - start over.
-                if (have > 0 && resp.code == 200) {
-                    part.delete()
-                    have = 0
-                }
-
-                val body = resp.body
-                if (body == null) {
-                    Log.e(TAG, "empty body")
-                    return@withContext Result.retry()
-                }
-                val total = if (have > 0) have + body.contentLength() else body.contentLength()
-                val totalBytes = if (total > 0) total else model.fileBytes
-
-                body.byteStream().use { input ->
-                    java.io.RandomAccessFile(part, "rw").use { out ->
-                        out.seek(have)
-                        val buf = ByteArray(256 * 1024)
-                        var lastReport = 0L
-                        while (true) {
-                            if (isStopped) return@withContext Result.failure()
-                            val n = input.read(buf)
-                            if (n <= 0) break
-                            out.write(buf, 0, n)
-                            have += n
-
-                            val now = System.currentTimeMillis()
-                            if (now - lastReport > 400) {
-                                lastReport = now
-                                val pct = ((have * 100) / totalBytes.coerceAtLeast(1)).toInt().coerceIn(0, 100)
-                                setProgress(
-                                    Data.Builder()
-                                        .putInt(KEY_PROGRESS, pct)
-                                        .putLong(KEY_DONE_BYTES, have)
-                                        .putLong(KEY_TOTAL_BYTES, totalBytes)
-                                        .build()
-                                )
-                                runCatching { setForeground(notification(model.name, pct)) }
-                            }
-                        }
-                    }
-                }
+        app.llmobi.data.CatalogSync.refresh(applicationContext)
+        val model = app.llmobi.data.CatalogSync.load(applicationContext).firstOrNull { it.id == modelId }
+            ?: return@withContext Result.failure(workDataOf(KEY_ERROR to "This model is no longer in the library. Choose another model."))
+        try {
+            setForeground(notification(model.name, 0))
+            val target = ResumableDownload(client).download(
+                DownloadSpec(model.url, model.fileBytes, model.sha256), fileFor(applicationContext, modelId),
+            ) { have, total ->
+                val pct = (have * 100 / total).toInt().coerceIn(0, 100)
+                setProgress(workDataOf(KEY_PROGRESS to pct, KEY_DONE_BYTES to have, KEY_TOTAL_BYTES to total))
+                setForeground(notification(model.name, pct))
             }
-
-            // Verify only when the catalog gave us a hash. An empty hash means the
-            // ingest job has not filled it in yet - do not block the user on that.
-            if (model.sha256.isNotBlank()) {
-                val actual = sha256(part)
-                if (!actual.equals(model.sha256, ignoreCase = true)) {
-                    part.delete()
-                    return@withContext Result.failure(
-                        workDataOf(KEY_ERROR to "The downloaded file was damaged. Please try again.")
-                    )
-                }
-            }
-
-            if (target.exists()) target.delete()
-            if (!part.renameTo(target)) {
-                return@withContext Result.failure(workDataOf(KEY_ERROR to "Could not save the model file."))
-            }
-
+            app.llmobi.data.CatalogSync.remember(applicationContext, model)
             Store(applicationContext).markInstalled(modelId, target.absolutePath, target.length())
             Result.success(workDataOf(KEY_PROGRESS to 100))
-        } catch (t: Throwable) {
-            // Log before retrying. Swallowing this made a real download failure
-            // indistinguishable from a slow network for forty minutes of backoff.
-            Log.e(TAG, "download threw: ${t::class.java.simpleName}: ${t.message}", t)
-            // The .part file stays on disk on purpose: next attempt resumes from it.
-            Result.retry()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            Log.e(TAG, "Download failed for $modelId", failure)
+            val retryable = if (failure is DownloadFailure) failure.retryable else failure is java.io.IOException
+            val message = if (failure is DownloadFailure) failure.message else
+                "The download was interrupted. Check your connection and retry; your progress is saved."
+            if (retryable && runAttemptCount < 4) {
+                setProgress(workDataOf(KEY_ERROR to (message ?: "Waiting to retry the download.")))
+                Result.retry()
+            } else Result.failure(workDataOf(KEY_ERROR to message))
         }
-    }
-
-    private fun sha256(f: File): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        f.inputStream().use { s ->
-            val buf = ByteArray(1 shl 20)
-            while (true) {
-                val n = s.read(buf)
-                if (n <= 0) break
-                md.update(buf, 0, n)
-            }
-        }
-        return md.digest().joinToString("") { "%02x".format(it) }
+        } finally { lock.unlock() }
     }
 
     private fun notification(modelName: String, pct: Int): ForegroundInfo {

@@ -19,8 +19,11 @@ data class DeviceProfile(
     val soc: String,
     val cores: Int,
     val androidVersion: String,
+    val cpuSupported: Boolean = true,
+    val memoryReserveMb: Int = 256,
 ) {
-    val supported: Boolean get() = abi.contains("arm64")
+    val supported: Boolean get() = abi.contains("arm64") && cpuSupported
+    val usableRamMb: Int get() = (availableRamMb - memoryReserveMb).coerceAtLeast(0)
 }
 
 /** What the badge says. The user sees a word and a colour, never a number. */
@@ -28,8 +31,9 @@ enum class Fit(val label: String) {
     EXCELLENT("Excellent"),
     RECOMMENDED("Recommended"),
     HEAVY("Heavy"),
-    WONT_RUN("Not sure"),
+    WONT_RUN("Too heavy right now"),
     NO_SPACE("Not enough space"),
+    UNSUPPORTED("Phone not supported"),
 }
 
 object DeviceProfiler {
@@ -56,6 +60,8 @@ object DeviceProfiler {
             },
             cores = Runtime.getRuntime().availableProcessors(),
             androidVersion = Build.VERSION.RELEASE ?: "?",
+            cpuSupported = CpuCompatibility.missingOnDevice().isEmpty(),
+            memoryReserveMb = (mi.threshold / 1_048_576L).toInt().coerceAtLeast(192),
         )
     }
 
@@ -66,16 +72,15 @@ object DeviceProfiler {
      * advertises 4 GB may only have 1 GB free - and that is the number that decides
      * whether the model loads or the process gets killed.
      */
-    fun fit(model: ModelEntry, p: DeviceProfile): Fit {
-        if (!p.supported) return Fit.WONT_RUN
+    fun fit(model: ModelEntry, p: DeviceProfile, installed: Boolean = false): Fit {
+        if (!p.supported) return Fit.UNSUPPORTED
 
         val needMb = model.fileBytes / 1_048_576L
         // Leave a 1 GB cushion so we never fill the phone completely.
-        if (p.freeStorageMb < needMb + 1024) return Fit.NO_SPACE
+        if (!installed && p.freeStorageMb < needMb + 1024) return Fit.NO_SPACE
 
-        // Headroom the OS can hand back if pressed: available now, plus a slice of
-        // what is currently held as reclaimable cache. Deliberately conservative.
-        val usable = p.availableRamMb + (p.totalRamMb - p.availableRamMb) / 5
+        // Keep Android's low-memory reserve rather than guessing reclaimable RAM.
+        val usable = p.usableRamMb
         val ratio = usable.toDouble() / model.minRamMb.toDouble()
 
         return when {
@@ -86,9 +91,9 @@ object DeviceProfiler {
         }
     }
 
-    /** Store ordering: best fit first, then smallest, so the top of the list always works. */
-    fun rank(models: List<ModelEntry>, p: DeviceProfile): List<Pair<ModelEntry, Fit>> =
-        models.map { it to fit(it, p) }
+    /** Store ordering: best fit first, then smallest, with fit labels describing the current memory estimate. */
+    fun rank(models: List<ModelEntry>, p: DeviceProfile, installedIds: Set<String> = emptySet()): List<Pair<ModelEntry, Fit>> =
+        models.map { it to fit(it, p, it.id in installedIds) }
             .sortedWith(
                 compareBy(
                     { pair -> pair.second.ordinal },

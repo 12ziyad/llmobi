@@ -49,7 +49,13 @@ become yours; NOTICE lists which licences apply to what.
 
 ## Build the app
 
-Requires JDK 17, the Android SDK, and NDK 27.
+Requires JDK 17, Android SDK 35, build-tools 35.0.0, CMake 3.22.1, and NDK 28.2.13676358. Restore the exact native revision before building:
+
+```powershell
+./tools/setup_native.ps1
+```
+
+The revision is pinned in `native/llama.cpp.ref`; the setup script refuses to overwrite a dirty native checkout.
 
 ```bash
 ./gradlew.bat assembleDebug
@@ -79,7 +85,7 @@ Before blaming the UI, check the engine in isolation:
 ```bash
 cd native/smoke
 cmake -S . -B build-arm64 -G Ninja \
-  -DCMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/27.0.12077973/build/cmake/android.toolchain.cmake \
+  -DCMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/28.2.13676358/build/cmake/android.toolchain.cmake \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 -DCMAKE_BUILD_TYPE=Release
 cmake --build build-arm64 --target smoke -j 8
 
@@ -135,6 +141,7 @@ npm run deploy
 | `GET /v1/model/:id` | One model |
 | `GET /v1/search?q=` | Proxied Hugging Face search, for Advanced mode |
 | `GET /v1/health` | Live model count |
+| `GET /v1/release` | Latest signed APK version, immutable URL, size and SHA-256 |
 
 A weekly cron re-checks every listed file still exists and corrects sizes that drifted. It never adds models automatically — curation is the product.
 
@@ -211,31 +218,32 @@ overstated by up to 11%. Run it before shipping a catalog change.
 
 ## How compatibility is decided
 
-Never from parameter count. The app reads the device and compares one precomputed number.
+The app checks 64-bit ARM, the engine's required CPU instructions (`asimddp` and
+`asimdhp`), available RAM and free storage. Unsupported processors are explained
+before the user downloads model weights.
 
 ```
-usable  = availableRam + (totalRam - availableRam) / 5
-ratio   = usable / model.minRamMb
+usable = max(0, availableRam - max(Android low-memory threshold, 192 MB))
+ratio  = usable / model.minRamMb
 
-ratio >= 1.80  →  Excellent
-ratio >= 1.25  →  Recommended
-ratio >= 1.00  →  Heavy
-otherwise      →  Not sure
+ratio >= 1.80  -> Excellent
+ratio >= 1.25  -> Recommended
+ratio >= 1.00  -> Heavy
+otherwise     -> Too heavy right now
 ```
 
-`minRamMb` is `fileMB * 1.25 + 500`, calibrated against the one case actually
-measured: Qwen 0.5B (408 MB of weights) alongside Compose and the Android
-runtime with ~1040 MB free. Storage is checked separately, with a 1 GB cushion so the phone is never filled completely.
+Recommendations sort by fit, then file size. Downloading leaves 1 GB free;
+installed models do not need that space a second time. RAM estimates include
+weights and runtime overhead, but are not a speed guarantee. Memory is checked
+again before loading. A small shortfall reduces context; less than 85% of the
+estimated requirement stops the load with a useful message. A 45-second watchdog
+stops generation if no text arrives.
 
-None of this ever blocks an install. The sheet shows what the model needs
-against what the phone has, marks it as fitting or not, and the button still
-says *Try it anyway*. The estimate is a guess and phones under-report what they
-can free; the honest thing is to say so and let the person find out. If a load
-genuinely cannot fit, it fails with a message, and if generation produces no
-word in 45 seconds - the signature of a phone paging weights in from flash -
-a watchdog stops it and says why.
-
-The user never sees `GGUF`, `Q4_K_M`, `KV cache` or `tokens/sec`.
+Model downloads resume in private partial files. Size, GGUF magic and the catalog
+SHA-256 are checked before atomic installation. Bundled models all have SHA-256
+checksums. Interrupted transfers retry with backoff; unavailable files and storage
+problems show a recoverable error. Installed metadata is preserved separately so
+a catalog removal does not break an already downloaded model.
 
 ---
 
@@ -254,7 +262,8 @@ This is not a product feature; it's a development seam. Every screen, the stop b
 
 - No account, anywhere in the app.
 - Chats never leave the phone. There is no endpoint that could receive them.
-- The only two network calls are: fetch the catalog, download a model file. Both live in one file each, so the claim is auditable.
+- Online requests fetch catalog/release metadata and download selected models or app updates. The website counts APK downloads; chat content is never included.
+- Automatic cloud backup is excluded. Android device-to-device transfer can carry chats and settings; large model weights must be downloaded again.
 - Analytics are off by default and there is no telemetry in v1.
 
 ---
@@ -262,3 +271,61 @@ This is not a product feature; it's a development seam. Every screen, the stop b
 ## Licences
 
 We link to Hugging Face rather than redistributing weights. Apache-2.0 and MIT models (Qwen, Mistral, Phi, DeepSeek distills) can be mirrored to R2 freely. Llama and Gemma permit redistribution **with conditions** — get those reviewed before mirroring; until then the catalog points at the upstream URL.
+
+## Offline updates and releases
+
+Version 1.1.0 adds update checks on launch/return and a connected-network worker
+scheduled every six hours. Android may delay background work to save battery.
+When an update is found, the app shows it in Settings and can send a notification
+if permission is enabled. The user chooses when to download and install; offline
+chat remains independent of update checks. Android always owns the final install
+confirmation. An offline or force-stopped app cannot receive an instant push.
+
+Existing 1.0.0 installations need one manual upgrade to 1.1.0 to get this feature.
+Install over the existing app using the same signing key; do not uninstall it.
+
+For each later release:
+
+1. Increase `versionCode` and `versionName` in `app/build.gradle.kts`.
+2. Run the verification commands below and test on a supported physical phone.
+3. Build `assembleRelease` with the original signing key.
+4. Run `python tools/prepare_release.py --previous-apk PATH_TO_PUBLISHED_APK`.
+   This verifies identity, signing-key continuity, increasing version, archive
+   integrity and alignment. It stages the APK in `web/public/releases/`, updates
+   the latest download, and generates `api/src/release.js` plus local evidence in
+   `release-artifacts/`. It does not deploy anything.
+5. Build and publish the website/APK first. Verify the immutable release URL,
+   byte length and SHA-256 over HTTPS before publishing the API manifest.
+6. Publish the API, then check `/v1/release` on an older installed app, download,
+   install and confirm its chats/settings/models remain intact.
+
+Do not replace the bytes at an existing versioned APK URL. If a release must be
+withdrawn, remove its API offer (`RELEASE = null`) and restore the website's last
+known good download. Already installed apps require a fix with a **higher**
+versionCode; Android downgrades are not a safe rollback strategy. Preserve old
+release files and signing-key backups. Catalog seeds upsert metadata without
+resetting download counts, status or admin overrides.
+
+## Verification
+
+```powershell
+./gradlew.bat testDebugUnitTest lintDebug assembleRelease --max-workers=2 --console=plain
+cd api
+npm ci
+npm test
+npx wrangler --config wrangler.toml deploy --dry-run
+cd ../web
+npm ci
+npm run build
+npm run test:e2e
+```
+
+Browser tests use installed Chrome and isolate upstream responses to test both
+online and failed/empty API conditions. API integration tests use local D1/KV.
+Android tests cover HTTP range recovery, truncation, corruption, cancellation,
+low storage, phone fit, load safety, catalog persistence, SQLite history and UTF-8
+streaming. CI runs these checks and builds an unsigned debug APK without secrets.
+
+See `VALIDATION.md` for evidence from this change and the physical-device cases
+that still need measurement. Earlier Galaxy F15 numbers above are historical
+benchmarks, not new results for this release.

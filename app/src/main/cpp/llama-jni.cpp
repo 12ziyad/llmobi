@@ -51,9 +51,21 @@ inline Session *as_session(jlong h) { return reinterpret_cast<Session *>(h); }
 
 std::string jstr(JNIEnv *env, jstring s) {
     if (!s) return {};
-    const char *c = env->GetStringUTFChars(s, nullptr);
-    std::string out(c ? c : "");
-    if (c) env->ReleaseStringUTFChars(s, c);
+    const jchar *chars = env->GetStringChars(s, nullptr);
+    if (!chars) return {};
+    const jsize length = env->GetStringLength(s);
+    std::string out;
+    for (jsize i = 0; i < length; ++i) {
+        uint32_t cp = chars[i];
+        if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < length && chars[i + 1] >= 0xDC00 && chars[i + 1] <= 0xDFFF) {
+            cp = 0x10000 + ((cp - 0xD800) << 10) + (chars[++i] - 0xDC00);
+        } else if (cp >= 0xD800 && cp <= 0xDFFF) cp = 0xFFFD;
+        if (cp < 0x80) out += char(cp);
+        else if (cp < 0x800) { out += char(0xC0 | (cp >> 6)); out += char(0x80 | (cp & 63)); }
+        else if (cp < 0x10000) { out += char(0xE0 | (cp >> 12)); out += char(0x80 | ((cp >> 6) & 63)); out += char(0x80 | (cp & 63)); }
+        else { out += char(0xF0 | (cp >> 18)); out += char(0x80 | ((cp >> 12) & 63)); out += char(0x80 | ((cp >> 6) & 63)); out += char(0x80 | (cp & 63)); }
+    }
+    env->ReleaseStringChars(s, chars);
     return out;
 }
 
@@ -164,16 +176,18 @@ Java_app_llmobi_engine_LlamaBridge_nativeLoadModel(
     cp.n_threads = threads;
     cp.n_threads_batch = threads;
 
+    auto *s = new Session();
+    s->model = model;
+    cp.abort_callback = [](void *data) { return static_cast<Session *>(data)->cancel.load(); };
+    cp.abort_callback_data = s;
     llama_context *ctx = llama_init_from_model(model, cp);
     if (!ctx) {
         LOGE("failed to create context");
-        llama_model_free(model);
+        delete s;
         return 0;
     }
 
-    auto *s = new Session();
-    s->model = model;
-    s->ctx   = ctx;
+    s->ctx = ctx;
 
     LOGI("loaded %s (ctx=%d, threads=%d, template=%s)",
          path.c_str(), contextSize, threads,
@@ -225,6 +239,7 @@ Java_app_llmobi_engine_LlamaBridge_nativeStartChat(
 
     Session *s = as_session(handle);
     if (!s || !s->ctx) return JNI_FALSE;
+    s->cancel.store(false);
 
     const jsize n_msg = env->GetArrayLength(jroles);
     if (n_msg <= 0 || env->GetArrayLength(jcontents) != n_msg) return JNI_FALSE;
@@ -284,6 +299,7 @@ Java_app_llmobi_engine_LlamaBridge_nativeStartChat(
 
     const int n_batch = 256;
     for (size_t i = 0; i < toks.size(); i += n_batch) {
+        if (s->cancel.load()) return JNI_FALSE;
         const int chunk = (int) std::min((size_t) n_batch, toks.size() - i);
         llama_batch b = llama_batch_get_one(toks.data() + i, chunk);
         if (llama_decode(s->ctx, b) != 0) {
@@ -324,14 +340,13 @@ Java_app_llmobi_engine_LlamaBridge_nativeStartChat(
     s->produced   = 0;
     s->max_tokens = maxTokens;
     s->running    = true;
-    s->cancel.store(false);
     LOGI("chat started: %d prompt tokens, cap %d | template=%ldms tokenize=%ldms decode=%ldms (%.1f ms/tok)",
          (int) toks.size(), maxTokens, t_template, t_tokenize, t_decode,
          toks.empty() ? 0.0 : (double) t_decode / toks.size());
     return JNI_TRUE;
 }
 
-JNIEXPORT jstring JNICALL
+JNIEXPORT jbyteArray JNICALL
 Java_app_llmobi_engine_LlamaBridge_nativeNextToken(JNIEnv *env, jobject, jlong handle) {
     Session *s = as_session(handle);
     if (!s || !s->running || s->cancel.load()) return nullptr;
@@ -356,7 +371,9 @@ Java_app_llmobi_engine_LlamaBridge_nativeNextToken(JNIEnv *env, jobject, jlong h
     }
 
     s->produced++;
-    return env->NewStringUTF(text.c_str());
+    jbyteArray bytes = env->NewByteArray((jsize)text.size());
+    if (bytes) env->SetByteArrayRegion(bytes, 0, (jsize)text.size(), reinterpret_cast<const jbyte *>(text.data()));
+    return bytes;
 }
 
 JNIEXPORT void JNICALL
@@ -364,7 +381,6 @@ Java_app_llmobi_engine_LlamaBridge_nativeStop(JNIEnv *, jobject, jlong handle) {
     Session *s = as_session(handle);
     if (!s) return;
     s->cancel.store(true);
-    s->running = false;
 }
 
 } // extern "C"

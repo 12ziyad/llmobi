@@ -4,10 +4,13 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.Executors
 
 /**
@@ -87,7 +90,7 @@ object LlamaBridge {
         available = if (missing.isNotEmpty()) {
             unavailableReason =
                 "This phone's processor is missing an instruction the AI engine needs " +
-                    "(${missing.joinToString()}). It is a 2016-17 design, and this app " +
+                    "(${missing.joinToString()}). This version of the app " +
                     "cannot run on it. Sorry."
             Log.w("LlamaBridge", "cpu lacks $missing; not loading native library")
             false
@@ -105,14 +108,7 @@ object LlamaBridge {
      * Features the library was compiled to assume that this CPU does not report.
      * Reads the kernel's own list, so it is right even on chips we have never seen.
      */
-    private fun missingCpuFeatures(): List<String> {
-        val line = runCatching {
-            java.io.File("/proc/cpuinfo").readLines().firstOrNull { it.startsWith("Features") }
-        }.getOrNull() ?: return emptyList() // cannot read it: assume fine, the loader will tell us
-        val have = line.substringAfter(':').trim().split(' ').toSet()
-        val need = mapOf("asimddp" to "dot product", "asimdhp" to "half precision")
-        return need.filterKeys { it !in have }.values.toList()
-    }
+    private fun missingCpuFeatures(): List<String> = app.llmobi.device.CpuCompatibility.missingOnDevice()
 
     external fun nativeInit(): Boolean
     external fun nativeLoadModel(path: String, contextSize: Int, threads: Int): Long
@@ -126,7 +122,7 @@ object LlamaBridge {
         temperature: Float,
     ): Boolean
     /** Returns the next token's text, or null when the sequence is finished. */
-    external fun nativeNextToken(handle: Long): String?
+    external fun nativeNextToken(handle: Long): ByteArray?
     external fun nativeStop(handle: Long)
     external fun nativeSystemInfo(): String
 }
@@ -134,7 +130,9 @@ object LlamaBridge {
 class LlamaEngine : Engine {
 
     override val name = "llama.cpp"
-    private var handle: Long = 0L
+    private val handleLock = Any()
+    private val releases = java.util.concurrent.atomic.AtomicLong()
+    @Volatile private var handle: Long = 0L
     @Volatile private var cancelled = false
 
     override val loaded: Boolean get() = handle != 0L
@@ -143,6 +141,7 @@ class LlamaEngine : Engine {
         withContext(EngineDispatcher) {
             if (!LlamaBridge.available) return@withContext false
             unloadOnEngineThread()
+            val releaseAtStart = releases.get()
             val threads = pickThreads()
             // Pull the file through the page cache first. llama.cpp mmaps it, so
             // without this the weights arrive as millions of random page faults
@@ -150,12 +149,19 @@ class LlamaEngine : Engine {
             // sequential read is an order of magnitude faster for the same bytes.
             warmPageCache(path)
 
-            handle = try {
+            val loadedHandle = try {
                 LlamaBridge.nativeLoadModel(path, contextSize, threads)
             } catch (t: Throwable) {
                 Log.e("LlamaEngine", "load failed", t)
                 0L
             }
+            synchronized(handleLock) {
+                if (releases.get() != releaseAtStart) {
+                    if (loadedHandle != 0L) LlamaBridge.nativeFreeModel(loadedHandle)
+                } else handle = loadedHandle
+            }
+            try { currentCoroutineContext().ensureActive() }
+            catch (e: kotlinx.coroutines.CancellationException) { unloadOnEngineThread(); throw e }
             if (handle != 0L) {
                 runCatching { LlamaBridge.nativeWarmUp(handle) }
                     .onFailure { Log.w("LlamaEngine", "warm-up skipped: ${it.message}") }
@@ -197,20 +203,21 @@ class LlamaEngine : Engine {
      * point is the side effect: the kernel keeps them in the page cache, so the
      * mmap that follows is served from memory rather than flash.
      */
-    private fun warmPageCache(path: String) {
+    private suspend fun warmPageCache(path: String) {
         val t0 = System.currentTimeMillis()
         val bytes = runCatching {
             java.io.File(path).inputStream().use { input ->
                 val buf = ByteArray(4 shl 20)
                 var total = 0L
                 while (true) {
+                    currentCoroutineContext().ensureActive()
                     val n = input.read(buf)
                     if (n <= 0) break
                     total += n
                 }
                 total
             }
-        }.getOrDefault(0L)
+        }.getOrElse { if (it is kotlinx.coroutines.CancellationException) throw it else 0L }
         val ms = System.currentTimeMillis() - t0
         Log.i(
             "LlamaEngine",
@@ -220,7 +227,7 @@ class LlamaEngine : Engine {
     }
 
     /** Must only be called from [EngineDispatcher]. */
-    private fun unloadOnEngineThread() {
+    private fun unloadOnEngineThread() = synchronized(handleLock) {
         if (handle != 0L) {
             try {
                 LlamaBridge.nativeFreeModel(handle)
@@ -233,12 +240,12 @@ class LlamaEngine : Engine {
     override fun unload() {
         // Fire-and-forget onto the engine thread so a caller on the main thread
         // never blocks waiting for a free.
-        val h = handle
-        handle = 0L
+        releases.incrementAndGet()
+        val h = synchronized(handleLock) { handle.also { handle = 0L } }
         if (h != 0L) {
             EngineDispatcher.dispatch(kotlin.coroutines.EmptyCoroutineContext) {
                 try {
-                    LlamaBridge.nativeFreeModel(h)
+                    synchronized(handleLock) { LlamaBridge.nativeFreeModel(h) }
                 } catch (_: Throwable) {
                 }
             }
@@ -246,29 +253,31 @@ class LlamaEngine : Engine {
     }
 
     override fun generate(turns: List<Turn>, maxTokens: Int, temperature: Float): Flow<String> = flow {
-        if (handle == 0L || turns.isEmpty()) return@flow
+        val h = handle
+        if (h == 0L || turns.isEmpty()) return@flow
+        currentCoroutineContext().ensureActive()
         cancelled = false
         val roles = Array(turns.size) { turns[it].role }
         val contents = Array(turns.size) { turns[it].content }
-        if (!LlamaBridge.nativeStartChat(handle, roles, contents, maxTokens, temperature)) return@flow
-        while (!cancelled) {
-            val tok = LlamaBridge.nativeNextToken(handle) ?: break
-            emit(tok)
+        if (!LlamaBridge.nativeStartChat(h, roles, contents, maxTokens, temperature)) return@flow
+        val decoder = Utf8TokenDecoder()
+        while (!cancelled && handle == h) {
+            currentCoroutineContext().ensureActive()
+            val bytes = LlamaBridge.nativeNextToken(h) ?: break
+            val text = decoder.append(bytes)
+            if (text.isNotEmpty()) emit(text)
         }
+        if (!cancelled) decoder.append(byteArrayOf(), end = true).takeIf { it.isNotEmpty() }?.let { emit(it) }
     }.flowOn(EngineDispatcher)
 
     override fun stop() {
-        // Deliberately not on the engine thread: that thread is busy inside
-        // nativeNextToken, and this flag is what lets it notice and return.
         cancelled = true
-        val h = handle
-        if (h != 0L) {
-            try {
-                LlamaBridge.nativeStop(h)
-            } catch (_: Throwable) {
-            }
+        synchronized(handleLock) {
+            val h = handle
+            if (h != 0L) LlamaBridge.nativeStop(h)
         }
     }
+
 }
 
 // ------------------------------------------------------------------ stub
@@ -339,6 +348,8 @@ class StubEngine : Engine {
 object Engines {
 
     @Volatile private var current: Engine? = null
+    private val loadLock = kotlinx.coroutines.sync.Mutex()
+    private var loadedContext = 0
     @Volatile var currentModelId: String? = null
         private set
 
@@ -350,14 +361,14 @@ object Engines {
         }
 
     /** Already-loaded models return immediately; a switch unloads the old one first. */
-    suspend fun ensureLoaded(modelId: String, path: String, contextSize: Int): Boolean {
+    suspend fun ensureLoaded(modelId: String, path: String, contextSize: Int): Boolean = loadLock.withLock {
         val e = engine()
-        if (currentModelId == modelId && e.loaded) return true
+        if (currentModelId == modelId && e.loaded && loadedContext == contextSize) return@withLock true
         e.unload()
         currentModelId = null
         val ok = e.load(path, contextSize)
-        if (ok) currentModelId = modelId
-        return ok
+        if (ok) { currentModelId = modelId; loadedContext = contextSize }
+        ok
     }
 
     fun release() {

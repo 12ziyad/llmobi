@@ -3,14 +3,17 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "db:create": "wrangler d1 create llmobi",
-    "db:init": "wrangler d1 execute llmobi --remote --file=./schema.sql",
-    "db:seed": "wrangler d1 execute llmobi --remote --file=./seed.sql",
-    "tail": "wrangler tail"
+    "dev": "wrangler --config wrangler.toml dev",
+    "deploy": "wrangler --config wrangler.toml deploy",
+    "db:create": "wrangler --config wrangler.toml d1 create llmobi",
+    "db:init": "wrangler --config wrangler.toml d1 execute llmobi --remote --file=./schema.sql",
+    "db:seed": "wrangler --config wrangler.toml d1 execute llmobi --remote --file=./seed.sql",
+    "tail": "wrangler --config wrangler.toml tail",
+    "test": "node --test test/*.test.js"
   },
   "devDependencies": {
-    "wrangler": "^3.99.0"
-  }
+    "miniflare": "5.20261023.3-beta",
+    "wrangler": "4.156.0"
+  },
+  "type": "module"
 }

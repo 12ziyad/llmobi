@@ -86,8 +86,14 @@ fun ChatScreen(s: AppState) {
                 )
                 Spacer(Modifier.height(2.dp))
                 Mono(
-                    if (s.engineNote != null) "● PREVIEW ENGINE" else "● RUNNING ON THIS PHONE",
-                    color = if (s.engineNote != null) skin.amber else skin.green,
+                    when {
+                        !s.device.supported -> "PHONE NOT SUPPORTED"
+                        s.loadingModel -> "LOADING ON THIS PHONE"
+                        s.generating -> "● RUNNING ON THIS PHONE"
+                        model != null && s.isInstalled(model.id) -> "● READY OFFLINE"
+                        else -> "DOWNLOAD ONCE · CHAT OFFLINE"
+                    },
+                    color = if (!s.device.supported || s.engineNote != null) skin.amber else skin.green,
                     size = 8,
                     spacing = 1.2,
                 )
@@ -116,6 +122,16 @@ fun ChatScreen(s: AppState) {
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(skin.line))
 
+        if (s.availableUpdate != null) {
+            Text("An app update is available · Open settings", color = skin.fg, fontSize = 12.sp,
+                modifier = Modifier.fillMaxWidth().clickable { s.go(Screen.SETTINGS) }.padding(12.dp))
+        }
+        s.modelId?.let { id -> s.downloadErrors[id]?.let { error ->
+            Text(error, color = skin.red, fontSize = 12.sp, modifier = Modifier.padding(12.dp))
+        } }
+        s.engineNote?.let { note ->
+            Text(note, color = skin.amber, fontSize = 12.sp, modifier = Modifier.padding(12.dp))
+        }
         // ---------------- messages
         val listState = rememberLazyListState()
         // Animate only when a whole new message appears.
@@ -188,8 +204,14 @@ private fun Welcome(s: AppState, modifier: Modifier) {
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            if (installed) "Ask anything. It runs on your phone, so it works with no internet."
-            else "Install it once and it works offline forever.",
+            if (!s.device.supported) "This phone does not support the AI engine. A newer 64-bit ARM phone is required."
+            else if (installed) "Ask anything. It runs on your phone, so it works with no internet."
+            else when (s.fitOf(model)) {
+                app.llmobi.device.Fit.UNSUPPORTED -> "This phone does not support the AI engine. Please check compatibility before downloading models."
+                app.llmobi.device.Fit.NO_SPACE -> "Free some storage before installing. Browse shows the space each model needs."
+                app.llmobi.device.Fit.WONT_RUN -> "Memory is tight right now. Close other apps before downloading, or browse for a smaller model."
+                else -> "A small model to start with, chosen using your phone's memory and storage. Download once, then chat offline."
+            },
             color = skin.grey2,
             fontSize = 13.sp,
             modifier = Modifier.fillMaxWidth(),
@@ -197,7 +219,9 @@ private fun Welcome(s: AppState, modifier: Modifier) {
         )
         Spacer(Modifier.height(20.dp))
 
-        if (!installed) {
+        if (!s.device.supported) {
+            app.llmobi.ui.components.BigButton("Browse library", ghost = true) { s.go(Screen.STORE) }
+        } else if (!installed) {
             app.llmobi.ui.components.BigButton("Install · ${model.sizeLabel}") { s.askInstall(model) }
         } else {
             val ideas = listOf(

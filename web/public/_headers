@@ -4,3 +4,8 @@
   Referrer-Policy: strict-origin-when-cross-origin
 /a/*
   Cache-Control: public, max-age=31536000, immutable
+
+/llmobi.apk
+  Cache-Control: no-cache
+/releases/*
+  Cache-Control: public, max-age=31536000, immutable

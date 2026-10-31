@@ -3,8 +3,7 @@
 -- Everything the phone needs to make a decision is precomputed here so the app
 -- can stay dumb: it compares one number (min_ram_mb) and prints two strings.
 
-DROP TABLE IF EXISTS models;
-CREATE TABLE models (
+CREATE TABLE IF NOT EXISTS models (
   id            TEXT PRIMARY KEY,
   name          TEXT NOT NULL,
   tagline       TEXT NOT NULL,
@@ -40,12 +39,11 @@ CREATE TABLE models (
   updated_at    INTEGER NOT NULL
 );
 
-CREATE INDEX idx_models_status ON models(status);
-CREATE INDEX idx_models_tier   ON models(tier);
+CREATE INDEX IF NOT EXISTS idx_models_status ON models(status);
+CREATE INDEX IF NOT EXISTS idx_models_tier   ON models(tier);
 
 -- Human-written copy, kept apart so re-ingesting never overwrites your words.
-DROP TABLE IF EXISTS overrides;
-CREATE TABLE overrides (
+CREATE TABLE IF NOT EXISTS overrides (
   id       TEXT PRIMARY KEY,
   name     TEXT,
   tagline  TEXT,
@@ -59,8 +57,7 @@ CREATE TABLE overrides (
 -- Deliberately anonymous: no IP, no cookie, no identifier of any kind. Country
 -- and Android version arrive free in Cloudflare's request headers, and neither
 -- one identifies a person. There is nothing here to leak.
-DROP TABLE IF EXISTS downloads;
-CREATE TABLE downloads (
+CREATE TABLE IF NOT EXISTS downloads (
   id       INTEGER PRIMARY KEY AUTOINCREMENT,
   at       INTEGER NOT NULL,   -- epoch millis
   day      TEXT    NOT NULL,   -- YYYY-MM-DD, so grouping never parses a date
@@ -68,5 +65,5 @@ CREATE TABLE downloads (
   android  TEXT,               -- major version parsed from the user agent
   platform TEXT                -- android | other
 );
-CREATE INDEX idx_dl_day     ON downloads(day);
-CREATE INDEX idx_dl_country ON downloads(country);
+CREATE INDEX IF NOT EXISTS idx_dl_day     ON downloads(day);
+CREATE INDEX IF NOT EXISTS idx_dl_country ON downloads(country);
