@@ -19,7 +19,7 @@ const STEPS = [
   {
     n: '04',
     t: 'Wait once',
-    d: 'The model downloads from Hugging Face, between 0.4 GB and 18 GB depending which one. It carries on in the background and resumes if your signal drops.',
+    d: 'The model downloads from Hugging Face, between 0.4 GB and 18 GB depending which one. Interrupted model downloads can resume.',
   },
   {
     n: '05',
@@ -203,8 +203,8 @@ export default function App() {
             with no internet<span>and no bill</span>
           </h1>
           <p className="sub">
-            Download it once over wi-fi. After that it works on a train, on a plane,
-            with no data left — and it <b>never asks you to sign up or pay</b>.
+            Download the app and a model, then chat offline.
+            {' '}<b>No account or subscription.</b>
           </p>
           <div className="cta">
             <a className="dl" href={APK}>Download for Android</a>
@@ -217,6 +217,7 @@ export default function App() {
             the app checks before you download a model.
           </p>
           <p className="download-help">Download not starting? <a href="/llmobi.apk" download>Use the direct APK link</a>.</p>
+          <p className="download-help">Your chats stay on your phone. <a href="#privacy">See how privacy works</a>.</p>
           <HowItWorks />
           <p className="compatibility">Model recommendations use your available memory and storage.
             Catalog fixes arrive when you are online. New app versions appear in Settings for you to install;
@@ -230,10 +231,25 @@ export default function App() {
 
       <footer className="foot">
         <div className="fgrid">
-          <div className="f"><b>No cloud</b><span>Nothing is sent anywhere</span></div>
+          <div className="f"><b>Private chats</b><span>Processed on your phone</span></div>
           <div className="f"><b>No account</b><span>Open it and use it</span></div>
           <div className="f"><b>No bill</b><span>Free after download</span></div>
         </div>
+        <details className="privacy" id="privacy">
+          <summary>Privacy: what stays on your phone</summary>
+          <div>
+            <p><strong>Your conversations stay local.</strong> The app processes messages on your phone
+              and does not upload your chats to LLMobi or an AI service. No account is required.</p>
+            <p><strong>Online requests have a specific purpose.</strong> The app connects to download models
+              and app updates, and to check the model catalog and available releases. These requests do not include your chats.</p>
+            <p><strong>The website counts APK downloads.</strong> Our download counter stores the time,
+              country, Android major version when available, and platform category. It does not store
+              IP addresses, account details or a persistent user identifier, and does not use tracking cookies.</p>
+            <p><strong>Service providers receive normal connection information.</strong> Hosting, font and
+              model-download providers can receive your IP address and browser or app request information
+              when you connect to them. This is separate from your on-device conversations.</p>
+          </div>
+        </details>
         <div className="licence">
           <b>Open source, Apache 2.0.</b> Every line of this app is public — you can
           read exactly what it does with your data, which is the only way a privacy

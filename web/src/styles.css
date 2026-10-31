@@ -445,3 +445,9 @@ h1 span { display: block; color: var(--red); }
   max-width: 48ch; margin: 14px 0;
 }
 .download-help a { color: #f5f1e9; text-decoration: underline; text-underline-offset: 3px; }
+
+.privacy { margin-top: 22px; max-width: 760px; border: 1px solid var(--line); padding: 16px; scroll-margin-top: 20px; }
+.privacy summary { cursor: pointer; font-weight: 600; font-size: 14px; line-height: 1.5; }
+.privacy summary:focus-visible { outline: 2px solid var(--red); outline-offset: 5px; }
+.privacy p { color: var(--grey-2); font-size: 13px; line-height: 1.7; margin-top: 14px; }
+.privacy strong { color: var(--bone); }
