@@ -29,8 +29,8 @@ android {
         applicationId = "app.llmobi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.1.1"
 
         ndk {
             // Only 64-bit ARM. Every phone that can run a local model is arm64,

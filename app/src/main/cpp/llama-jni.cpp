@@ -22,6 +22,8 @@
 namespace {
 
 std::once_flag g_backend_once;
+// Loads are serialized by EngineDispatcher. Cancellation is callable from the UI.
+std::atomic<bool> g_cancel_load{false};
 
 void ensure_backend() {
     std::call_once(g_backend_once, [] {
@@ -145,6 +147,16 @@ Java_app_llmobi_engine_LlamaBridge_nativeSystemInfo(JNIEnv *env, jobject) {
     return env->NewStringUTF(llama_print_system_info());
 }
 
+JNIEXPORT void JNICALL
+Java_app_llmobi_engine_LlamaBridge_nativePrepareLoad(JNIEnv *, jobject) {
+    g_cancel_load.store(false);
+}
+
+JNIEXPORT void JNICALL
+Java_app_llmobi_engine_LlamaBridge_nativeCancelLoad(JNIEnv *, jobject) {
+    g_cancel_load.store(true);
+}
+
 JNIEXPORT jlong JNICALL
 Java_app_llmobi_engine_LlamaBridge_nativeLoadModel(
         JNIEnv *env, jobject, jstring jpath, jint contextSize, jint threads) {
@@ -163,6 +175,9 @@ Java_app_llmobi_engine_LlamaBridge_nativeLoadModel(
     // phone that is the difference between paging and running. Measured on a
     // Dimensity 6100+: 9.3 tok/s repacked against 17 tok/s from the mmap.
     mp.use_extra_bufts = false;
+    mp.progress_callback = [](float, void *) { return !g_cancel_load.load(); };
+
+    if (g_cancel_load.load()) return 0;
 
     llama_model *model = llama_model_load_from_file(path.c_str(), mp);
     if (!model) {
@@ -172,7 +187,8 @@ Java_app_llmobi_engine_LlamaBridge_nativeLoadModel(
 
     llama_context_params cp = llama_context_default_params();
     cp.n_ctx     = (uint32_t) contextSize;
-    cp.n_batch   = 256;
+    cp.n_batch   = contextSize <= 512 ? 64 : 256;
+    cp.n_ubatch  = cp.n_batch;
     cp.n_threads = threads;
     cp.n_threads_batch = threads;
 
@@ -180,6 +196,7 @@ Java_app_llmobi_engine_LlamaBridge_nativeLoadModel(
     s->model = model;
     cp.abort_callback = [](void *data) { return static_cast<Session *>(data)->cancel.load(); };
     cp.abort_callback_data = s;
+    if (g_cancel_load.load()) { delete s; return 0; }
     llama_context *ctx = llama_init_from_model(model, cp);
     if (!ctx) {
         LOGE("failed to create context");
@@ -188,6 +205,7 @@ Java_app_llmobi_engine_LlamaBridge_nativeLoadModel(
     }
 
     s->ctx = ctx;
+    if (g_cancel_load.load()) { delete s; return 0; }
 
     LOGI("loaded %s (ctx=%d, threads=%d, template=%s)",
          path.c_str(), contextSize, threads,
@@ -297,7 +315,7 @@ Java_app_llmobi_engine_LlamaBridge_nativeStartChat(
         toks.erase(toks.begin(), toks.end() - keep);
     }
 
-    const int n_batch = 256;
+    const int n_batch = (int) llama_n_batch(s->ctx);
     for (size_t i = 0; i < toks.size(); i += n_batch) {
         if (s->cancel.load()) return JNI_FALSE;
         const int chunk = (int) std::min((size_t) n_batch, toks.size() - i);

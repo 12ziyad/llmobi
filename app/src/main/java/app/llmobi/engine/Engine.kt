@@ -111,6 +111,8 @@ object LlamaBridge {
     private fun missingCpuFeatures(): List<String> = app.llmobi.device.CpuCompatibility.missingOnDevice()
 
     external fun nativeInit(): Boolean
+    external fun nativePrepareLoad()
+    external fun nativeCancelLoad()
     external fun nativeLoadModel(path: String, contextSize: Int, threads: Int): Long
     external fun nativeFreeModel(handle: Long)
     external fun nativeWarmUp(handle: Long)
@@ -142,12 +144,19 @@ class LlamaEngine : Engine {
             if (!LlamaBridge.available) return@withContext false
             unloadOnEngineThread()
             val releaseAtStart = releases.get()
-            val threads = pickThreads()
+            val lowMemory = contextSize <= 512
+            val threads = if (lowMemory) minOf(pickThreads(), 2) else pickThreads()
             // Pull the file through the page cache first. llama.cpp mmaps it, so
             // without this the weights arrive as millions of random page faults
             // during the first decode - measured at 28 s on a Galaxy F15. One big
             // sequential read is an order of magnitude faster for the same bytes.
-            warmPageCache(path)
+            if (!lowMemory) warmPageCache(path)
+            val loadContext = currentCoroutineContext()
+            synchronized(handleLock) {
+                loadContext.ensureActive()
+                if (releases.get() != releaseAtStart) return@withContext false
+                LlamaBridge.nativePrepareLoad()
+            }
 
             val loadedHandle = try {
                 LlamaBridge.nativeLoadModel(path, contextSize, threads)
@@ -162,7 +171,7 @@ class LlamaEngine : Engine {
             }
             try { currentCoroutineContext().ensureActive() }
             catch (e: kotlinx.coroutines.CancellationException) { unloadOnEngineThread(); throw e }
-            if (handle != 0L) {
+            if (handle != 0L && !lowMemory) {
                 runCatching { LlamaBridge.nativeWarmUp(handle) }
                     .onFailure { Log.w("LlamaEngine", "warm-up skipped: ${it.message}") }
             }
@@ -238,6 +247,7 @@ class LlamaEngine : Engine {
     }
 
     override fun unload() {
+        stop()
         // Fire-and-forget onto the engine thread so a caller on the main thread
         // never blocks waiting for a free.
         releases.incrementAndGet()
@@ -273,6 +283,7 @@ class LlamaEngine : Engine {
     override fun stop() {
         cancelled = true
         synchronized(handleLock) {
+            LlamaBridge.nativeCancelLoad()
             val h = handle
             if (h != 0L) LlamaBridge.nativeStop(h)
         }
@@ -355,6 +366,9 @@ object Engines {
 
     val usingRealEngine: Boolean get() = LlamaBridge.available
 
+    fun contextFor(modelId: String): Int? =
+        if (currentModelId == modelId && current?.loaded == true) loadedContext else null
+
     fun engine(): Engine =
         current ?: synchronized(this) {
             current ?: (if (LlamaBridge.available) LlamaEngine() else StubEngine()).also { current = it }
@@ -372,6 +386,7 @@ object Engines {
     }
 
     fun release() {
+        current?.stop()
         current?.unload()
         currentModelId = null
     }

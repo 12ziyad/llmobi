@@ -31,7 +31,7 @@ enum class Fit(val label: String) {
     EXCELLENT("Excellent"),
     RECOMMENDED("Recommended"),
     HEAVY("Heavy"),
-    WONT_RUN("Too heavy right now"),
+    WONT_RUN("Memory may be tight"),
     NO_SPACE("Not enough space"),
     UNSUPPORTED("Phone not supported"),
 }

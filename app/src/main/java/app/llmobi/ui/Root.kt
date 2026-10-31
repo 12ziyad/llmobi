@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -118,6 +120,18 @@ fun Root(s: AppState) {
                     device = s.device,
                     onCancel = { s.dismissInstall() },
                     onInstall = { s.confirmInstall() },
+                )
+            }
+
+            s.pendingRun?.let { attempt ->
+                AlertDialog(
+                    onDismissRequest = { s.dismissRun() },
+                    title = { Text("Try with less memory?") },
+                    text = { Text("${attempt.modelName} may be slow or Android may close the app. " +
+                        "You can still try with shorter conversation memory and replies. " +
+                        "Previous failed loads also use this mode.") },
+                    confirmButton = { TextButton(onClick = { s.confirmRun() }) { Text("Try anyway") } },
+                    dismissButton = { TextButton(onClick = { s.dismissRun() }) { Text("Not now") } },
                 )
             }
 

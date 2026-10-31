@@ -146,9 +146,8 @@ fun InstallSheet(
                         if (!storeOk)
                             "Free up some space first, or the download will not finish."
                         else
-                            "Your phone has less usable memory than this model needs. " +
-                                "Close other apps or choose a smaller AI. We check memory " +
-                                "again before loading and stop if there is too little.",
+                            "Available memory is below this model’s estimate. You can still try " +
+                                "with lower-memory settings. It may be slow or Android may close the app.",
                         color = skin.grey, fontSize = 12.5.sp, lineHeight = 18.sp,
                     )
                 }
