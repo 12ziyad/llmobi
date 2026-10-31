@@ -27,8 +27,19 @@ phone reports heat promptly. There is no claimed percentage chance of success.
   non-debuggable status, ZIP integrity and 16 KB ZIP/ELF alignment.
 - APK: 7,548,946 bytes; SHA-256
   `d628d493593cec39a2450a6104ce65da1acb7c7251345aba05bc2696e5e9b960`.
-- Existing 1.1.0 immutable download remains available. Publish the new APK and
-  verify its public digest before deploying the release manifest.
+- Published at https://llmobi.pages.dev, Pages deployment `366bde67`.
+- API deployment `dd21a1cf-ea22-4715-9905-d36aa1045eaf` advertises code 3 with
+  the exact signed APK digest. Both public APK URLs and the live website's
+  Download button were downloaded and matched. The APK was published and
+  verified before the API manifest. The emulator's online update check passed.
+- Public release: https://github.com/12ziyad/llmobi/releases/tag/v1.1.1.
+- Independent GitHub verification passed:
+  https://github.com/12ziyad/llmobi/actions/runs/41196059696 (59 Android tests,
+  Android lint/debug APK, 10 API tests and 5 browser tests). PR #2 is merged.
+- Existing 1.1.0 immutable download remains available. Local publication,
+  screenshots, digest checks and CI evidence are in `release-artifacts/1.1.1`.
+- The signed APK exports the new native load-cancellation methods and the
+  shrinker preserves their bridge names. No physical ARM inference claim is made.
 
 The detailed 1.1.0 baseline below remains historical evidence.
 
