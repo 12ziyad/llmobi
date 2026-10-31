@@ -15,6 +15,12 @@ One APK, many icons. To the person holding the phone it looks like several separ
 
 **Live:** [llmobi.pages.dev](https://llmobi.pages.dev) &middot; API at `llmobi-api.gpmai.workers.dev`
 
+**Current release:** [1.1.0 public beta](https://github.com/12ziyad/llmobi/releases/tag/v1.1.0).
+Requires Android 8+ and a supported 64-bit ARM processor. Performance varies by
+phone and model; see [validation coverage](VALIDATION.md).
+[Report a phone compatibility issue](https://github.com/12ziyad/llmobi/issues/new?template=bug_report.yml)
+with your phone model, RAM, Android version and selected AI.
+
 ---
 
 ## Licence

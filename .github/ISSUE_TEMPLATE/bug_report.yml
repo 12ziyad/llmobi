@@ -1,0 +1,51 @@
+name: Phone compatibility or bug
+description: Report a download, offline chat, update or device problem.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for testing LLMobi. Do not paste private conversations, credentials or personal data."
+  - type: input
+    id: phone
+    attributes:
+      label: Phone model and RAM
+      placeholder: "Example: Samsung Galaxy F15, 6 GB RAM"
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Android and LLMobi versions
+      placeholder: "Example: Android 15, LLMobi 1.1.0"
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: AI model and free storage
+      placeholder: "Example: Qwen 0.5B, 8 GB free"
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where did it fail?
+      options:
+        - APK installation
+        - Model download or resume
+        - Model loading
+        - Offline chat or speed
+        - App update
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps, expected result and actual result
+      description: Include the exact error message and whether Wi-Fi/mobile data was on.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Optional crash report
+      description: If Settings shows a crash report, review it for personal information before pasting.

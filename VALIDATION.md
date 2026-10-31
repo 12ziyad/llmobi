@@ -1,8 +1,22 @@
 # LLMobi 1.1.0 validation
 
-Validation date: 2026-10-31. This is a release candidate, not a claim that every
-phone or model has been tested. Production publishing is separate from the
-checks below.
+Validation date: 2026-10-31. Version 1.1.0 is published as a public beta. This is
+not a claim that every phone or model has been tested.
+
+## Production publication
+
+- Website/APK: https://llmobi.pages.dev — Pages deployment `a6f63b3b`.
+- Release: https://github.com/12ziyad/llmobi/releases/tag/v1.1.0.
+- API version: `70ab8b67-11ec-476a-a0dc-4f5325ed6173`.
+- `/v1/release` returns versionCode 2 with the exact signed APK size and digest.
+- Both public APK paths returned HTTP 200 and matched the digest below.
+- A live Chrome test at 390 px and 1365 px loaded all 20 models without overflow
+  or JavaScript errors; clicking the main Download button produced the exact APK.
+- All 20 live models now have checksums. The existing 383 download records were
+  preserved; the browser download test increased the count to 384.
+- A database export was saved locally before metadata changes. The previous API
+  version was `4fe85521-8a31-46a9-bcb8-b1b8129ad3de`; the original APK remains in
+  the local audit directory. Do not use an Android downgrade as a rollback.
 
 ## Observed baseline
 
@@ -21,7 +35,7 @@ checks below.
 | API integration, 10 tests | Real local D1 and KV; conditional catalog requests, dead-link detection and recovery, transient upstream errors, hidden entries, download counts, release endpoint, idempotent schema/seed, checksum/size refresh and safe database errors |
 | Browser, 5 tests | 390 px mobile and 1365 px desktop layouts, all 20 catalog rows, download links, instructions accordion, no horizontal overflow or JavaScript errors, failed/empty API fallback, release metadata |
 | Release build | Signed, non-debuggable `app.llmobi`, versionCode 2, Android 8+; same certificate as 1.0.0; ZIP integrity; ZIP and every ELF LOAD segment aligned for 16 KB pages |
-| Cloudflare | Explicit LLMobi config passes Wrangler dry-run with its D1/KV bindings; no production mutation performed |
+| Cloudflare | Explicit LLMobi config passes Wrangler dry-run with its D1/KV bindings; production release, catalog and download checks passed after publication |
 
 The final signed candidate is 7,516,494 bytes. Its SHA-256 is
 `29dfa31e030f3a39229b731f55ba5028347620b4dc5d3d65e98f98358cdd1a35`.
