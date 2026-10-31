@@ -23,8 +23,8 @@ checks below.
 | Release build | Signed, non-debuggable `app.llmobi`, versionCode 2, Android 8+; same certificate as 1.0.0; ZIP integrity; ZIP and every ELF LOAD segment aligned for 16 KB pages |
 | Cloudflare | Explicit LLMobi config passes Wrangler dry-run with its D1/KV bindings; no production mutation performed |
 
-The final signed candidate is 7,500,110 bytes. Its SHA-256 is
-`2cc5a024281b26cdbb9a30438e2ca0babe7e68df493621f968114249e0ec5797`.
+The final signed candidate is 7,516,494 bytes. Its SHA-256 is
+`29dfa31e030f3a39229b731f55ba5028347620b4dc5d3d65e98f98358cdd1a35`.
 Both website build paths (`/llmobi.apk` and `/releases/llmobi-1.1.0.apk`)
 contain those same bytes. The release manifest advertises that digest.
 

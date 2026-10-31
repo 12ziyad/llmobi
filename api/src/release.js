@@ -3,8 +3,8 @@ export const RELEASE = {
   "versionCode": 2,
   "versionName": "1.1.0",
   "url": "https://llmobi.pages.dev/releases/llmobi-1.1.0.apk",
-  "bytes": 7500110,
-  "sha256": "2cc5a024281b26cdbb9a30438e2ca0babe7e68df493621f968114249e0ec5797",
+  "bytes": 7516494,
+  "sha256": "29dfa31e030f3a39229b731f55ba5028347620b4dc5d3d65e98f98358cdd1a35",
   "minSdk": 26,
   "notes": "Reliable downloads, phone-aware recommendations, multilingual fixes, and optional app updates."
 }
