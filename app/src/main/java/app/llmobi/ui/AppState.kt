@@ -29,6 +29,7 @@ import app.llmobi.engine.Turn
 import app.llmobi.perf.Perf
 import app.llmobi.perf.Run
 import app.llmobi.safety.Safety
+import app.llmobi.safety.RuntimeSafety
 import app.llmobi.update.AppUpdates
 import app.llmobi.update.AppUpdateWorker
 import app.llmobi.update.UpdateInfo
@@ -42,6 +43,8 @@ import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 enum class Screen { CHAT, STORE, MY_AIS, SETTINGS, APPEARANCE, STORAGE, MODEL_SETTINGS, PERFORMANCE }
+
+data class PendingRun(val modelId: String, val modelName: String, val chatId: Long?, val text: String)
 
 class AppState(app: Application) : AndroidViewModel(app) {
 
@@ -69,6 +72,18 @@ class AppState(app: Application) : AndroidViewModel(app) {
      */
     var catalog by mutableStateOf(CatalogSync.load(ctx))
         private set
+
+    var draftText by mutableStateOf("")
+    var pendingRun by mutableStateOf<PendingRun?>(null)
+        private set
+
+    fun dismissRun() { pendingRun = null }
+
+    fun confirmRun() {
+        val attempt = pendingRun ?: return
+        pendingRun = null
+        if (attempt.modelId == modelId && attempt.chatId == chatId) send(attempt.text, true)
+    }
 
     // ---- model + chat state
     var modelId by mutableStateOf(prefs.getString("last_model", null))
@@ -312,7 +327,9 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     // ---------------------------------------------------------------- send
 
-    fun send(text: String) {
+    fun send(text: String) = send(text, false)
+
+    private fun send(text: String, confirmed: Boolean) {
         val m = model ?: return
         val trimmed = text.trim()
         if (trimmed.isEmpty() || generating) return
@@ -326,6 +343,29 @@ class AppState(app: Application) : AndroidViewModel(app) {
             toast = it
             return
         }
+
+        RuntimeSafety.readStopReason(ctx)?.let {
+            Engines.release()
+            engineNote = it
+            return
+        }
+        val s = store.settings(m.id)
+        val ctxSize = when (s.memory) {
+            "short" -> 1024
+            "long" -> minOf(m.ctxDefault * 2, 8192)
+            else -> m.ctxDefault
+        }
+        device = DeviceProfiler.read(ctx)
+        val loadedContext = Engines.contextFor(m.id)
+        val plan = if (loadedContext != null) Safety.Plan(false, minOf(ctxSize, loadedContext),
+            if (loadedContext <= 512) "Low-memory mode: shorter conversation memory and replies." else null)
+        else Safety.planLoad(device.usableRamMb, m.minRamMb, ctxSize, Safety.isBlocked(ctx, m.id) || confirmed)
+        if (plan.needsConfirmation && !confirmed) {
+            pendingRun = PendingRun(m.id, m.name, chatId, trimmed)
+            return
+        }
+        pendingRun = null
+        if (draftText.trim() == trimmed) draftText = ""
 
         if (chatId == null) {
             chatId = store.newChat(m.id, trimmed.take(48))
@@ -341,21 +381,24 @@ class AppState(app: Application) : AndroidViewModel(app) {
         streamingMessageId = aiId
 
         generating = true
-        val s = store.settings(m.id)
-        val ctxSize = when (s.memory) {
-            "short" -> 1024
-            "long" -> minOf(m.ctxDefault * 2, 8192)
-            else -> m.ctxDefault
-        }
-
         genJob = viewModelScope.launch {
+            val protection = launch monitor@ {
+                while (true) {
+                    kotlinx.coroutines.delay(1_000)
+                    val reason = RuntimeSafety.readStopReason(ctx) ?: continue
+                    stopGeneration()
+                    Engines.release()
+                    engineNote = reason
+                    return@monitor
+                }
+            }
             try {
             val sentAt = System.currentTimeMillis()
             Perf.startLive()
 
             // Loading reads hundreds of megabytes off flash. It happens on the
             // engine thread, but the user still needs to see that we are busy.
-            val alreadyUp = Engines.currentModelId == m.id && Engines.engine().loaded
+            val alreadyUp = Engines.contextFor(m.id) == plan.contextSize
 
             // Everything below re-checks reality at the moment of loading rather
             // than trusting what the store decided earlier: free memory moves,
@@ -371,27 +414,8 @@ class AppState(app: Application) : AndroidViewModel(app) {
                     )
                     return@launch
                 }
-                if (Safety.isBlocked(ctx, m.id)) {
-                    Perf.endLive()
-                    finishStream(
-                        aiId,
-                        "${m.name} has crashed this phone twice while loading, so I have " +
-                            "stopped trying. A smaller AI will work better here. You can " +
-                            "force it from Settings if you want to try anyway.",
-                    )
-                    return@launch
-                }
             }
-
-            device = DeviceProfiler.read(ctx)
-            val usableMb = device.usableRamMb
-            val plan = if (alreadyUp) Safety.Plan(true, ctxSize, null) else Safety.planLoad(usableMb, m.minRamMb, ctxSize)
-            if (!plan.ok) {
-                Perf.endLive()
-                finishStream(aiId, plan.reason ?: "Not enough free memory right now.")
-                return@launch
-            }
-            plan.reason?.let { engineNote = it }
+            engineNote = plan.reason
 
             loadingModel = !alreadyUp
             val loadStart = System.currentTimeMillis()
@@ -409,7 +433,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
                 )
                 return@launch
             }
-            engineNote = if (Engines.usingRealEngine) null else "Preview engine - llama.cpp not built yet"
+            engineNote = if (Engines.usingRealEngine) plan.reason else "Preview engine - llama.cpp not built yet"
 
             val turns = withContext(Dispatchers.Default) { buildTurns(s.system, trimmed) }
             val sb = StringBuilder()
@@ -417,13 +441,11 @@ class AppState(app: Application) : AndroidViewModel(app) {
             var tokens = 0
             var firstWordAt = 0L
             var stalled = false
-            // A phone that is genuinely out of memory does not fail - it pages
-            // the weights in from flash for every token and sits there for
-            // minutes. Someone reported exactly that: five minutes, then nothing.
-            // Forty-five seconds with no first word is not "thinking", so stop
-            // and say what happened rather than let them wait.
+            // Explicit low-memory attempts may take longer to produce a first word.
+            // Keep Stop responsive and still bound a run that makes no progress.
+            val firstWordTimeout = if (plan.lowMemory) 120_000L else 45_000L
             val watchdog = launch {
-                kotlinx.coroutines.delay(45_000)
+                kotlinx.coroutines.delay(firstWordTimeout)
                 if (firstWordAt == 0L) {
                     stalled = true
                     Engines.engine().stop()
@@ -432,7 +454,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
             try {
                 // collect, never collectLatest: collectLatest cancels the previous
                 // token's handler when the next arrives, which silently drops text.
-                Engines.engine().generate(turns, 400, s.creativity).collect { tok ->
+                Engines.engine().generate(turns, plan.maxReplyTokens, s.creativity).collect { tok ->
                     if (firstWordAt == 0L) firstWordAt = System.currentTimeMillis()
                     tokens++
                     sb.append(tok)
@@ -455,10 +477,8 @@ class AppState(app: Application) : AndroidViewModel(app) {
                 Perf.endLive()
                 finishStream(
                     aiId,
-                    "${m.name} could not get going - after 45 seconds it had not produced " +
-                        "a word, which usually means the phone is out of memory and paging " +
-                        "the model in from storage. Close other apps and try again, or pick " +
-                        "a smaller AI from the menu.",
+                    "${m.name} did not produce a word within ${firstWordTimeout / 1000} seconds. " +
+                        "The run was stopped. You can try a shorter message, close other apps, or choose a smaller AI.",
                 )
                 return@launch
             }
@@ -483,6 +503,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
             catch (e: Exception) {
                 if (streamingMessageId == aiId) finishStream(aiId, "The model stopped unexpectedly. Try again or choose a smaller AI.")
             } finally {
+                protection.cancel()
                 if (Safety.crashedOn(ctx) == m.id) Safety.cancelLoad(ctx, m.id)
                 if (streamingMessageId == aiId) {
                     loadingModel = false

@@ -37,6 +37,7 @@ class LLMobiApp : Application() {
         // A loaded model is by far the biggest thing in this process. Give it back
         // before Android decides to kill us outright.
         Log.w(TAG, "low memory - releasing model")
+        app.llmobi.safety.RuntimeSafety.noteMemoryPressure()
         Engines.release()
     }
 

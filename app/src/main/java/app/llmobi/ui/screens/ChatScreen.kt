@@ -209,7 +209,7 @@ private fun Welcome(s: AppState, modifier: Modifier) {
             else when (s.fitOf(model)) {
                 app.llmobi.device.Fit.UNSUPPORTED -> "This phone does not support the AI engine. Please check compatibility before downloading models."
                 app.llmobi.device.Fit.NO_SPACE -> "Free some storage before installing. Browse shows the space each model needs."
-                app.llmobi.device.Fit.WONT_RUN -> "Memory is tight right now. Close other apps before downloading, or browse for a smaller model."
+                app.llmobi.device.Fit.WONT_RUN -> "Memory may be tight. You can still try this model with lower-memory settings."
                 else -> "A small model to start with, chosen using your phone's memory and storage. Download once, then chat offline."
             },
             color = skin.grey2,
@@ -305,7 +305,7 @@ private fun Bubble(m: Message, s: AppState) {
 @Composable
 private fun Composer(s: AppState) {
     val skin = LocalSkin.current
-    var text by remember { mutableStateOf("") }
+    var text by s::draftText
     val ready = text.isNotBlank()
 
     Column(
@@ -348,7 +348,6 @@ private fun Composer(s: AppState) {
                             s.stopGeneration()
                         } else {
                             s.send(text)
-                            text = ""
                         }
                     },
                 contentAlignment = Alignment.Center,

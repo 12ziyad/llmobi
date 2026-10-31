@@ -1,3 +1,39 @@
+# LLMobi 1.1.1 validation
+
+Validation date: 2026-10-31. This patch replaces estimated-RAM rejection with an
+explicit Try anyway option. A confirmed attempt uses a 512-token context,
+128-token reply limit, at most two threads, 64-token processing batches, and no
+whole-model page-cache warm-up or throwaway decode. Previous failed loads ask
+for consent instead of permanently blocking the model. Stop can cancel native
+weight loading through llama.cpp's progress callback.
+
+Android's actual low-memory signal and severe-or-higher thermal status stop
+active work and release the engine. Thermal reporting requires Android 10+;
+older phones retain OS protections and memory-pressure handling. This cannot
+guarantee that a model fits, that Android will never kill the app, or that every
+phone reports heat promptly. There is no claimed percentage chance of success.
+
+- Android: 59 tests pass, including real AppState send/confirmation/cancel flows
+  with an explicitly substituted test engine, previous failures, retained drafts,
+  stale confirmation, simulated heat during loading, Android service readings,
+  cooling/retry and Android 9 compatibility. No native inference is simulated as
+  a successful hardware test.
+- Signed release build and lint pass (zero errors, 38 existing warnings).
+- Android 15 x86_64 emulator: installed 1.1.1 over 1.1.0 without uninstalling;
+  launch, navigation, retained Light/Red appearance and version display checked.
+  The unsupported-CPU guard remains active. This emulator cannot measure ARM
+  inference speed, peak RAM or actual heat on the reported Galaxy F15.
+- Release preparation verifies signing-key continuity, package/version,
+  non-debuggable status, ZIP integrity and 16 KB ZIP/ELF alignment.
+- APK: 7,548,946 bytes; SHA-256
+  `d628d493593cec39a2450a6104ce65da1acb7c7251345aba05bc2696e5e9b960`.
+- Existing 1.1.0 immutable download remains available. Publish the new APK and
+  verify its public digest before deploying the release manifest.
+
+The detailed 1.1.0 baseline below remains historical evidence.
+
+---
+
 # LLMobi 1.1.0 validation
 
 Validation date: 2026-10-31. Version 1.1.0 is published as a public beta. This is

@@ -81,7 +81,10 @@ object Safety {
 
     // ------------------------------------------------------------ memory
 
-    data class Plan(val ok: Boolean, val contextSize: Int, val reason: String?)
+    data class Plan(val needsConfirmation: Boolean, val contextSize: Int, val reason: String?) {
+        val lowMemory: Boolean get() = contextSize <= 512
+        val maxReplyTokens: Int get() = if (lowMemory) 128 else 400
+    }
 
     /**
      * Decides how - or whether - to load, using memory as it is right now rather
@@ -91,16 +94,12 @@ object Safety {
      * it, so halving the window can be the difference between loading and being
      * killed. Better a model that remembers less than one that takes the app down.
      */
-    fun planLoad(availableMb: Int, needMb: Int, wantContext: Int): Plan {
-        val headroom = availableMb - needMb
-
-        if (headroom >= 0) return Plan(true, wantContext, null)
-
-        if (availableMb < needMb * 0.85) return Plan(false, 1024,
-            "There is not enough available memory to load this model safely. Close other apps or choose a smaller AI.")
-        val ctx = wantContext.coerceAtMost(1024)
-        val note = "Running with a shorter conversation memory to leave room for your phone."
-        return Plan(true, ctx, note)
+    fun planLoad(availableMb: Int, needMb: Int, wantContext: Int, previousFailures: Boolean = false): Plan {
+        // Catalog RAM figures are estimates, not proof that a model cannot run.
+        // Even a very large shortfall permits an explicitly requested attempt.
+        if (availableMb >= needMb && !previousFailures) return Plan(false, wantContext, null)
+        return Plan(true, wantContext.coerceAtMost(512),
+            "Low-memory mode: shorter conversation memory and replies.")
     }
 
     // ------------------------------------------------------------ crash log
