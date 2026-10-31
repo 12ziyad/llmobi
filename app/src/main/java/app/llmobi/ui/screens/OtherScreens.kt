@@ -96,16 +96,17 @@ fun StoreScreen(s: AppState) {
     val ranked = remember(s.catalog, s.device, s.installed.toList()) { s.ranked() }
 
     Column(Modifier.fillMaxSize().background(skin.bg).statusBarsPadding()) {
-        TopBar("Store", onBack = { s.go(Screen.CHAT) }, trailing = "${s.device.totalRamMb / 1024} GB PHONE")
+        TopBar("Store", onBack = { s.go(Screen.CHAT) }, trailing = "%.1f GB RAM".format(s.device.totalRamMb / 1024.0))
         LazyColumn(
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.weight(1f),
         ) {
             item {
-                SectionLabel("Best for your phone")
-                Text("%.1f GB available memory · %.1f GB free storage. Smaller models usually respond faster. These are estimates, not guaranteed speeds."
-                    .format(s.device.availableRamMb / 1024.0, s.device.freeStorageMb / 1024.0),
+                SectionLabel(if (s.device.supported) "Best for your phone" else "Model library")
+                Text(if (!s.device.supported) "This phone cannot run this version of the AI engine. You can browse the library, but model downloads are unavailable."
+                    else "%.1f GB usable memory · %.1f GB free storage. Smaller models usually respond faster. These are estimates, not guaranteed speeds."
+                    .format(s.device.usableRamMb / 1024.0, s.device.freeStorageMb / 1024.0),
                     color = skin.grey2, fontSize = 12.sp)
             }
             items(ranked, key = { it.first.id }) { (m, fit) ->
@@ -137,20 +138,23 @@ private fun ModelRow(m: ModelEntry, fit: Fit, s: AppState) {
                     Spacer(Modifier.width(7.dp))
                     NeedChip(m.minRamMb, fit == Fit.EXCELLENT || fit == Fit.RECOMMENDED)
                 }
+                Spacer(Modifier.height(4.dp))
+                Text(fit.label, fontSize = 11.sp,
+                    color = if (fit == Fit.EXCELLENT || fit == Fit.RECOMMENDED) skin.green else skin.grey2)
             }
             Spacer(Modifier.width(8.dp))
             Box(
                 Modifier
                     .clip(RoundedCornerShape(999.dp))
-                    .background(if (installed) skin.green.copy(alpha = 0.16f) else skin.red)
-                    .clickable {
+                    .background(if (!s.device.supported) skin.bg3 else if (installed) skin.green.copy(alpha = 0.16f) else skin.red)
+                    .clickable(enabled = s.device.supported) {
                         if (installed) { s.selectModel(m.id); s.go(Screen.CHAT) } else s.askInstall(m)
                     }
                     .padding(horizontal = 13.dp, vertical = 7.dp)
             ) {
                 Mono(
-                    if (installed) "OPEN" else "INSTALL",
-                    color = if (installed) skin.green else skin.onRed,
+                    if (!s.device.supported) "—" else if (installed) "OPEN" else "INSTALL",
+                    color = if (!s.device.supported) skin.grey2 else if (installed) skin.green else skin.onRed,
                     size = 10, weight = FontWeight.Bold, spacing = 0.8,
                 )
             }
