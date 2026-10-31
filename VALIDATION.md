@@ -38,8 +38,9 @@ conversion helper.
 
 Test reports are generated under `app/build/reports/` and browser screenshots
 under `web/test-results/`. Those generated files are ignored by Git. CI uploads
-reports and a debug APK for each push/PR; the workflow still needs its first
-hosted run.
+reports and a debug APK for each push/PR. A clean hosted run passed all build,
+lint, API and browser steps on commit `049fc66`:
+[GitHub Actions validation](https://github.com/12ziyad/llmobi/actions/runs/41188688361).
 
 ## Android emulator checks
 
@@ -57,6 +58,9 @@ presented as a real inference result on this emulator. SQLite/history retention
 and signing-policy tests use Robolectric; its Android package parser is simulated.
 
 ## Before a broad rollout
+
+The user chose to finish this implementation with emulator testing for now.
+The physical-device and hosted-update checks below remain explicitly unverified.
 
 - On supported 4 GB, 6–8 GB and 12 GB+ ARM phones: install a fitting model, measure
   cold/warm first-token time and reply rate, and repeat after backgrounding,
