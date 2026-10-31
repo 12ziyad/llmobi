@@ -18,6 +18,11 @@ jobs:
         shell: pwsh
         run: ./tools/setup_native.ps1
       - name: Android SDK components
+        uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: '12266719'
+          log-accepted-android-sdk-licenses: false
+      - name: Install pinned SDK packages
         shell: pwsh
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
       - name: Android tests, lint and APK
